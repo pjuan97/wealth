@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum EventType {
+  Opening_Balance
+  Income
+  Expense
+  Transfer
+  Investment
+  Withdrawal
+  Debt_Payment
+}
+
+model Transaction {
+  id           Int       @id @default(autoincrement())
+  date         DateTime  @db.Date
+  month_label  String    @db.VarChar(7)
+  event_type   EventType
+  level_1      String    @db.VarChar(50)
+  level_2      String    @db.VarChar(50)
+  level_3      String?   @db.VarChar(50)
+  usd_amount   Decimal?  @db.Decimal(14, 2)
+  fx_rate      Decimal?  @db.Decimal(10, 4)
+  amount       Decimal   @db.Decimal(14, 2)
+  from_account String?   @db.VarChar(50)
+  to_account   String?   @db.VarChar(50)
+  notes        String?   @db.Text
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+
+  @@index([month_label])
+  @@index([event_type])
+  @@index([from_account])
+  @@index([to_account])
+}
+
+model FxRate {
+  id          Int      @id @default(autoincrement())
+  date        DateTime @db.Date
+  month_label String   @db.VarChar(7)
+  currency    String   @db.VarChar(10)
+  rate_to_cop Decimal  @db.Decimal(10, 4)
+
+  @@unique([month_label, currency])
+  @@index([month_label])
+}
+
+model PlanVsAchievement {
+  id           Int      @id @default(autoincrement())
+  month_start  DateTime @db.Date
+  month_label  String   @db.VarChar(7)
+  event_type   String   @db.VarChar(20)
+  level_2      String   @db.VarChar(50)
+  level_3      String?  @db.VarChar(50)
+  base         Decimal  @db.Decimal(14, 2)
+  inflation    Decimal  @db.Decimal(6, 4)
+  seasonality  Decimal? @db.Decimal(6, 4)
+  plan         Decimal  @db.Decimal(14, 2)
+
+  @@unique([month_label, event_type, level_2, level_3])
+  @@index([month_label])
+}
+
+model EquityForecast {
+  id                   Int      @id @default(autoincrement())
+  month_start          DateTime @db.Date
+  month_label          String   @db.VarChar(7)
+  equity_type          String   @db.VarChar(50)
+  account              String   @db.VarChar(50)
+  base_equity          Decimal  @db.Decimal(14, 2)
+  annual_rate          Decimal  @db.Decimal(6, 4)
+  monthly_rate         Decimal  @db.Decimal(8, 6)
+  planned_contribution Decimal  @db.Decimal(14, 2) @default(0)
+  planned_withdrawal   Decimal  @db.Decimal(14, 2) @default(0)
+  projected_end        Decimal  @db.Decimal(14, 2)
+
+  @@unique([month_label, equity_type, account])
+  @@index([month_label])
+}
+
+model EquityExecuted {
+  id               Int      @id @default(autoincrement())
+  month_start      DateTime @db.Date
+  month_label      String   @db.VarChar(7)
+  equity_type      String   @db.VarChar(50)
+  platform         String   @db.VarChar(50)
+  start_balance    Decimal  @db.Decimal(14, 2) @default(0)
+  market_value_end Decimal? @db.Decimal(14, 2)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  @@unique([month_label, equity_type, platform])
+  @@index([month_label])
+}

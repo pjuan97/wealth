@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
 
 export async function GET() {
-  return NextResponse.json({ message: 'equity-forecast' })
+  return NextResponse.json({ message: 'Equity Forecast API — coming in WEALTH-008' })
 }

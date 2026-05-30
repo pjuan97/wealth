@@ -81,12 +81,10 @@ export default function Sidebar() {
   const pathname = usePathname()
 
   return (
-    <aside className="w-56 min-h-screen bg-black border-r border-white/10 flex flex-col">
+    <aside className="w-60 min-h-screen bg-black border-r border-white/10 flex flex-col">
       {/* Logo */}
-      <div className="px-5 py-6 border-b border-white/10">
-        <span className="text-white font-bold text-lg tracking-tight">
-          W<span className="text-white/40">ealth</span>
-        </span>
+      <div className="px-5 py-5 border-b border-white/10">
+        <span className="text-white font-bold text-xl tracking-tight">Wealth</span>
       </div>
 
       {/* Nav */}
@@ -101,7 +99,7 @@ export default function Sidebar() {
               key={item.href}
               href={item.href}
               className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium
+                flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
                 transition-colors duration-100
                 ${isActive
                   ? 'bg-white text-black'
@@ -118,7 +116,7 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className="px-5 py-4 border-t border-white/10">
-        <p className="text-white/20 text-xs">Wealth v0.1</p>
+        <p className="text-white/30 text-xs">Wealth v0.1</p>
       </div>
     </aside>
   )

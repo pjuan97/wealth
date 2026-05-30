@@ -10,18 +10,28 @@ export async function GET(request: NextRequest) {
   try {
     const where = month ? { month_label: month } : {}
 
-    const transactions = await prisma.transaction.findMany({
-      where,
-      orderBy: [{ date: 'desc' }, { id: 'desc' }],
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: parseInt(cursor) }, skip: 1 } : {}),
-    })
+    const [transactions, fxRate] = await Promise.all([
+      prisma.transaction.findMany({
+        where,
+        orderBy: [{ date: 'desc' }, { id: 'desc' }],
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: parseInt(cursor) }, skip: 1 } : {}),
+      }),
+      month
+        ? prisma.fxRate.findFirst({ where: { month_label: month, currency: 'USD' } })
+        : Promise.resolve(null),
+    ])
 
     const hasMore = transactions.length > limit
     const data = hasMore ? transactions.slice(0, limit) : transactions
     const nextCursor = hasMore ? data[data.length - 1].id : null
 
-    return NextResponse.json({ data, nextCursor, hasMore })
+    return NextResponse.json({
+      data,
+      nextCursor,
+      hasMore,
+      fxRate: fxRate ? Number(fxRate.rate_to_cop) : null,
+    })
   } catch (error) {
     console.error('GET /api/transactions error:', error)
     return NextResponse.json({ error: 'Failed to fetch transactions' }, { status: 500 })
@@ -59,9 +69,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const id = searchParams.get('id')
-
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
-
   try {
     await prisma.transaction.delete({ where: { id: parseInt(id) } })
     return NextResponse.json({ success: true })

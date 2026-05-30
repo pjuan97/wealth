@@ -2,11 +2,20 @@ export default function EquityExecutedPage() {
   return (
     <div className="p-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white">Equity Executed</h1>
-        <p className="text-white/40 text-sm mt-1">Actual investment performance with market values</p>
+        <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+          Equity Executed
+        </h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+          Actual investment performance with market values
+        </p>
       </div>
-      <div className="border border-white/10 rounded-lg p-8 text-center">
-        <p className="text-white/20 text-sm">Coming in WEALTH-009</p>
+      <div
+        className="rounded-xl p-12 text-center"
+        style={{ border: '1px solid var(--border)', background: 'var(--bg-surface)' }}
+      >
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+          Coming in WEALTH-009
+        </p>
       </div>
     </div>
   )

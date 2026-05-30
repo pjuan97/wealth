@@ -20,25 +20,31 @@ interface Transaction {
 }
 
 const MONTHS = [
-  '2026-01', '2026-02', '2026-03', '2026-04',
-  '2026-05', '2026-06', '2026-07', '2026-08',
-  '2026-09', '2026-10', '2026-11', '2026-12',
+  { key: '2026-01', label: 'Jan' },
+  { key: '2026-02', label: 'Feb' },
+  { key: '2026-03', label: 'Mar' },
+  { key: '2026-04', label: 'Apr' },
+  { key: '2026-05', label: 'May' },
+  { key: '2026-06', label: 'Jun' },
+  { key: '2026-07', label: 'Jul' },
+  { key: '2026-08', label: 'Aug' },
+  { key: '2026-09', label: 'Sep' },
+  { key: '2026-10', label: 'Oct' },
+  { key: '2026-11', label: 'Nov' },
+  { key: '2026-12', label: 'Dec' },
 ]
 
-const MONTH_NAMES: Record<string, string> = {
-  '2026-01': 'January', '2026-02': 'February', '2026-03': 'March',
-  '2026-04': 'April', '2026-05': 'May', '2026-06': 'June',
-  '2026-07': 'July', '2026-08': 'August', '2026-09': 'September',
-  '2026-10': 'October', '2026-11': 'November', '2026-12': 'December',
+const MONTH_FULL: Record<string, string> = {
+  '2026-01': 'January 2026', '2026-02': 'February 2026', '2026-03': 'March 2026',
+  '2026-04': 'April 2026', '2026-05': 'May 2026', '2026-06': 'June 2026',
+  '2026-07': 'July 2026', '2026-08': 'August 2026', '2026-09': 'September 2026',
+  '2026-10': 'October 2026', '2026-11': 'November 2026', '2026-12': 'December 2026',
 }
 
-function formatCOP(amount: string | number) {
-  const n = typeof amount === 'string' ? parseFloat(amount) : amount
+function formatCOP(n: number) {
   return new Intl.NumberFormat('es-CO', {
-    style: 'currency',
-    currency: 'COP',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    style: 'currency', currency: 'COP',
+    minimumFractionDigits: 0, maximumFractionDigits: 0,
   }).format(n)
 }
 
@@ -48,16 +54,6 @@ function formatDate(dateStr: string) {
   })
 }
 
-const EVENT_TYPE_COLORS: Record<string, string> = {
-  Income: 'text-white',
-  Expense: 'text-white/70',
-  Transfer: 'text-white/50',
-  Investment: 'text-white/50',
-  Withdrawal: 'text-white/50',
-  Debt_Payment: 'text-white/50',
-  Opening_Balance: 'text-white/30',
-}
-
 export default function TransactionsPage() {
   const [selectedMonth, setSelectedMonth] = useState('2026-04')
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -65,7 +61,6 @@ export default function TransactionsPage() {
   const [hasMore, setHasMore] = useState(false)
   const [loading, setLoading] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
-  const [deleteId, setDeleteId] = useState<number | null>(null)
   const observerRef = useRef<IntersectionObserver | null>(null)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
@@ -76,11 +71,7 @@ export default function TransactionsPage() {
       if (cursor) params.set('cursor', String(cursor))
       const res = await fetch(`/api/transactions?${params}`)
       const json = await res.json()
-      if (cursor) {
-        setTransactions(prev => [...prev, ...json.data])
-      } else {
-        setTransactions(json.data)
-      }
+      setTransactions(prev => cursor ? [...prev, ...json.data] : json.data)
       setNextCursor(json.nextCursor)
       setHasMore(json.hasMore)
     } catch (e) {
@@ -90,14 +81,12 @@ export default function TransactionsPage() {
     }
   }, [])
 
-  // Reset and reload when month changes
   useEffect(() => {
     setTransactions([])
     setNextCursor(null)
     fetchTransactions(selectedMonth)
   }, [selectedMonth, fetchTransactions])
 
-  // Infinite scroll sentinel
   useEffect(() => {
     if (observerRef.current) observerRef.current.disconnect()
     observerRef.current = new IntersectionObserver(entries => {
@@ -115,7 +104,6 @@ export default function TransactionsPage() {
     setTransactions(prev => prev.filter(t => t.id !== id))
   }
 
-  // Monthly summary
   const income = transactions
     .filter(t => t.event_type === 'Income')
     .reduce((s, t) => s + parseFloat(t.amount), 0)
@@ -126,113 +114,211 @@ export default function TransactionsPage() {
 
   return (
     <div className="flex flex-col h-screen">
-      {/* Header */}
-      <div className="px-8 py-6 border-b border-white/10 flex items-center justify-between shrink-0">
+
+      {/* Page header */}
+      <div
+        className="px-8 py-6 shrink-0 flex items-start justify-between"
+        style={{ borderBottom: '1px solid var(--border)' }}
+      >
         <div>
-          <h1 className="text-2xl font-bold text-white">Transactions</h1>
-          <p className="text-white/40 text-sm mt-0.5">Income, expenses, and financial movements</p>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+            Transactions
+          </h1>
+          <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
+            {MONTH_FULL[selectedMonth]}
+          </p>
         </div>
         <button
           onClick={() => setFormOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-white text-black text-sm font-semibold rounded-md hover:bg-white/90 transition-colors"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+          style={{
+            background: 'var(--text-primary)',
+            color: 'var(--text-inverse)',
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLElement).style.background = 'var(--accent-hover)'
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLElement).style.background = 'var(--text-primary)'
+          }}
         >
-          <span className="text-lg leading-none">+</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
           New Transaction
         </button>
       </div>
 
-      {/* Month selector */}
-      <div className="px-8 py-3 border-b border-white/10 flex items-center gap-1 shrink-0 overflow-x-auto">
+      {/* Month tabs */}
+      <div
+        className="px-6 shrink-0 flex items-center gap-1"
+        style={{
+          borderBottom: '1px solid var(--border)',
+          background: 'var(--bg-surface)',
+          paddingTop: '12px',
+          paddingBottom: '0',
+        }}
+      >
         {MONTHS.map(m => (
           <button
-            key={m}
-            onClick={() => setSelectedMonth(m)}
-            className={`px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors
-              ${selectedMonth === m
-                ? 'bg-white text-black'
-                : 'text-white/40 hover:text-white hover:bg-white/5'
-              }`}
+            key={m.key}
+            onClick={() => setSelectedMonth(m.key)}
+            className="relative px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors"
+            style={{
+              color: selectedMonth === m.key ? 'var(--text-primary)' : 'var(--text-muted)',
+              background: selectedMonth === m.key ? 'var(--bg-base)' : 'transparent',
+              borderTop: selectedMonth === m.key ? '1px solid var(--border)' : '1px solid transparent',
+              borderLeft: selectedMonth === m.key ? '1px solid var(--border)' : '1px solid transparent',
+              borderRight: selectedMonth === m.key ? '1px solid var(--border)' : '1px solid transparent',
+              borderBottom: selectedMonth === m.key ? '1px solid var(--bg-base)' : '1px solid transparent',
+              marginBottom: '-1px',
+            }}
           >
-            {MONTH_NAMES[m]}
+            {m.label}
           </button>
         ))}
       </div>
 
-      {/* Summary bar */}
-      <div className="px-8 py-3 border-b border-white/10 flex items-center gap-8 shrink-0">
-        <div>
-          <span className="text-white/30 text-xs">Income</span>
-          <p className="text-white text-sm font-medium">{formatCOP(income)}</p>
-        </div>
-        <div>
-          <span className="text-white/30 text-xs">Expense</span>
-          <p className="text-white/70 text-sm font-medium">{formatCOP(expense)}</p>
-        </div>
-        <div>
-          <span className="text-white/30 text-xs">Balance</span>
-          <p className={`text-sm font-medium ${balance >= 0 ? 'text-white' : 'text-white/50'}`}>
-            {formatCOP(balance)}
-          </p>
-        </div>
+      {/* Summary cards */}
+      <div
+        className="px-8 py-4 shrink-0 flex items-center gap-6"
+        style={{ borderBottom: '1px solid var(--border)' }}
+      >
+        {[
+          { label: 'Income', value: income, positive: true },
+          { label: 'Expense', value: expense, positive: false },
+          { label: 'Balance', value: balance, positive: balance >= 0 },
+        ].map(item => (
+          <div key={item.label}>
+            <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
+              {item.label}
+            </p>
+            <p
+              className="text-base font-semibold tabular-nums"
+              style={{ color: item.positive ? 'var(--text-primary)' : 'var(--text-secondary)' }}
+            >
+              {formatCOP(item.value)}
+            </p>
+          </div>
+        ))}
         <div className="ml-auto">
-          <span className="text-white/20 text-xs">{transactions.length} transactions</span>
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            {transactions.length} transactions
+          </span>
         </div>
       </div>
 
       {/* Table */}
       <div className="flex-1 overflow-y-auto">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-black border-b border-white/10">
-            <tr>
-              <th className="text-left px-8 py-3 text-white/30 text-xs font-medium">Date</th>
-              <th className="text-left px-3 py-3 text-white/30 text-xs font-medium">Type</th>
-              <th className="text-left px-3 py-3 text-white/30 text-xs font-medium">Category</th>
-              <th className="text-left px-3 py-3 text-white/30 text-xs font-medium">From</th>
-              <th className="text-left px-3 py-3 text-white/30 text-xs font-medium">To</th>
-              <th className="text-right px-8 py-3 text-white/30 text-xs font-medium">Amount</th>
-              <th className="px-4 py-3 w-10"></th>
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border)' }}>
+              {['Date', 'Type', 'Category', 'Notes', 'From \u2192 To', 'Amount', ''].map((h, i) => (
+                <th
+                  key={h || i}
+                  className="text-left py-3 text-xs font-medium"
+                  style={{
+                    color: 'var(--text-muted)',
+                    paddingLeft: i === 0 ? '32px' : '12px',
+                    paddingRight: i === 6 ? '16px' : '12px',
+                    textAlign: i === 5 ? 'right' : 'left',
+                    position: 'sticky',
+                    top: 0,
+                    background: 'var(--bg-base)',
+                    zIndex: 10,
+                  }}
+                >
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {transactions.map((t, i) => (
+            {transactions.map((t) => (
               <tr
                 key={t.id}
-                className={`border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors
-                  ${i % 2 === 0 ? '' : 'bg-white/[0.01]'}`}
+                className="group transition-colors"
+                style={{ borderBottom: '1px solid var(--border)' }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLElement).style.background = 'var(--bg-surface)'
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLElement).style.background = 'transparent'
+                }}
               >
-                <td className="px-8 py-3 text-white/50 text-xs whitespace-nowrap">
+                <td
+                  className="py-3 text-xs whitespace-nowrap"
+                  style={{ paddingLeft: '32px', paddingRight: '12px', color: 'var(--text-muted)' }}
+                >
                   {formatDate(t.date)}
                 </td>
-                <td className="px-3 py-3">
-                  <span className={`text-xs font-medium ${EVENT_TYPE_COLORS[t.event_type] || 'text-white/50'}`}>
+                <td className="py-3 px-3">
+                  <span
+                    className="text-xs font-medium px-2 py-0.5 rounded-md"
+                    style={{
+                      background: 'var(--bg-elevated)',
+                      color: t.event_type === 'Income'
+                        ? 'var(--text-primary)'
+                        : 'var(--text-secondary)',
+                    }}
+                  >
                     {t.event_type.replace(/_/g, ' ')}
                   </span>
                 </td>
-                <td className="px-3 py-3">
-                  <span className="text-white/70 text-xs">{t.level_2}</span>
-                  {t.level_3 && (
-                    <span className="text-white/30 text-xs"> &middot; {t.level_3}</span>
-                  )}
-                </td>
-                <td className="px-3 py-3 text-white/30 text-xs">{t.from_account || '—'}</td>
-                <td className="px-3 py-3 text-white/30 text-xs">{t.to_account || '—'}</td>
-                <td className="px-8 py-3 text-right">
-                  <span className={`text-xs font-medium tabular-nums
-                    ${t.event_type === 'Income' ? 'text-white' : 'text-white/60'}`}>
-                    {formatCOP(t.amount)}
+                <td className="py-3 px-3">
+                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    {t.level_2}
                   </span>
-                  {t.usd_amount && (
-                    <span className="text-white/20 text-xs ml-1">
-                      (${parseFloat(t.usd_amount).toFixed(2)})
+                  {t.level_3 && (
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      {' '}&middot; {t.level_3}
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3">
+                <td className="py-3 px-3 max-w-[180px]">
+                  <span
+                    className="text-xs truncate block"
+                    style={{ color: 'var(--text-muted)' }}
+                    title={t.notes || ''}
+                  >
+                    {t.notes || '\u2014'}
+                  </span>
+                </td>
+                <td className="py-3 px-3">
+                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    {[t.from_account, t.to_account].filter(Boolean).join(' \u2192 ') || '\u2014'}
+                  </span>
+                </td>
+                <td className="py-3 px-3 text-right">
+                  <span
+                    className="text-xs font-semibold tabular-nums"
+                    style={{ color: t.event_type === 'Income' ? 'var(--text-primary)' : 'var(--text-secondary)' }}
+                  >
+                    {formatCOP(parseFloat(t.amount))}
+                  </span>
+                  {t.usd_amount && parseFloat(t.usd_amount) > 0 && (
+                    <span className="text-xs ml-1.5" style={{ color: 'var(--text-muted)' }}>
+                      ${parseFloat(t.usd_amount).toFixed(2)}
+                    </span>
+                  )}
+                </td>
+                <td className="py-3" style={{ paddingRight: '16px', paddingLeft: '8px' }}>
                   <button
                     onClick={() => handleDelete(t.id)}
-                    className="text-white/10 hover:text-white/50 transition-colors text-base leading-none"
+                    className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded transition-all"
+                    style={{ color: 'var(--text-muted)' }}
+                    onMouseEnter={e => {
+                      (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)'
+                      ;(e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'
+                    }}
+                    onMouseLeave={e => {
+                      (e.currentTarget as HTMLElement).style.background = 'transparent'
+                      ;(e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'
+                    }}
                   >
-                    &times;
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
                   </button>
                 </td>
               </tr>
@@ -240,25 +326,30 @@ export default function TransactionsPage() {
           </tbody>
         </table>
 
-        {/* Infinite scroll sentinel */}
         <div ref={sentinelRef} className="h-4" />
 
-        {/* Loading */}
         {loading && (
-          <div className="text-center py-6">
-            <span className="text-white/20 text-xs">Loading...</span>
+          <div className="py-8 text-center">
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Loading&hellip;</span>
           </div>
         )}
 
-        {/* Empty state */}
         {!loading && transactions.length === 0 && (
-          <div className="text-center py-16">
-            <p className="text-white/20 text-sm">No transactions for {MONTH_NAMES[selectedMonth]}</p>
+          <div className="py-20 text-center">
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              No transactions for {MONTH_FULL[selectedMonth]}
+            </p>
+            <button
+              onClick={() => setFormOpen(true)}
+              className="mt-4 text-xs underline"
+              style={{ color: 'var(--text-secondary)' }}
+            >
+              Add the first one
+            </button>
           </div>
         )}
       </div>
 
-      {/* Slide-over form */}
       <TransactionForm
         open={formOpen}
         onClose={() => setFormOpen(false)}

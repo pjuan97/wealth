@@ -80,23 +80,27 @@ function formatCOP(n: number) {
   }).format(n)
 }
 
-function formatPct(n: number | null) {
+function formatAchievementPct(n: number | null) {
   if (n === null) return '—'
   return `${(n * 100).toFixed(1)}%`
 }
 
-function achievementColor(n: number | null): string {
-  if (n === null) return 'var(--text-muted)'
-  if (n >= 0.95 && n <= 1.05) return 'var(--text-primary)'
-  if (n > 1.05) return '#94a3b8'
-  return 'var(--text-secondary)'
-}
+function formatVariance(diff: number, plan: number, eventType: string): {
+  text: string
+  color: string
+  bg: string
+} {
+  if (!plan || plan === 0) return { text: '—', color: 'var(--text-muted)', bg: 'transparent' }
 
-function achievementBg(n: number | null): string {
-  if (n === null) return 'transparent'
-  if (n >= 0.95 && n <= 1.05) return 'rgba(148,163,184,0.15)'
-  if (n > 1.05) return 'rgba(148,163,184,0.08)'
-  return 'transparent'
+  const pct = (diff / plan) * 100
+  const isGood = eventType === 'Income' ? pct >= 0 : pct <= 0
+  const isNeutral = Math.abs(pct) <= 5
+
+  const text = `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`
+
+  if (isNeutral) return { text, color: 'var(--text-primary)', bg: 'rgba(148,163,184,0.1)' }
+  if (isGood) return { text, color: 'var(--text-primary)', bg: 'rgba(148,163,184,0.15)' }
+  return { text, color: 'var(--text-secondary)', bg: 'transparent' }
 }
 
 // ─── Editable cell ────────────────────────────────────────────────────────────
@@ -421,7 +425,7 @@ export default function PlanPage() {
                     <th style={thStyle()}>Plan</th>
                     <th style={thStyle()}>Executed</th>
                     <th style={thStyle()}>Difference</th>
-                    <th style={thStyle()}>Achievement</th>
+                    <th style={{ ...thStyle(), width: '120px' }}>Variance %</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -469,19 +473,23 @@ export default function PlanPage() {
                         {row.diff >= 0 ? '+' : ''}{formatCOP(row.diff)}
                       </td>
                       <td style={tdStyle()}>
-                        {row.achievement !== null && (
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '2px 8px',
-                            borderRadius: '4px',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            background: achievementBg(row.achievement),
-                            color: achievementColor(row.achievement),
-                          }}>
-                            {formatPct(row.achievement)}
-                          </span>
-                        )}
+                        {(() => {
+                          const v = formatVariance(row.diff, row.plan, row.event_type)
+                          return (
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              background: v.bg,
+                              color: v.color,
+                              fontVariantNumeric: 'tabular-nums',
+                            }}>
+                              {v.text}
+                            </span>
+                          )
+                        })()}
                       </td>
                     </tr>
                   ))}
@@ -492,7 +500,6 @@ export default function PlanPage() {
                     const isExpanded = expandedGroups.has(groupKey)
                     const groupPlan = l2rows.reduce((s, r) => s + r.plan, 0)
                     const groupExec = l2rows.reduce((s, r) => s + r.executed, 0)
-                    const groupAchievement = groupPlan > 0 ? groupExec / groupPlan : null
 
                     return [
                       // Group header
@@ -522,17 +529,23 @@ export default function PlanPage() {
                           {(groupExec - groupPlan) >= 0 ? '+' : ''}{formatCOP(groupExec - groupPlan)}
                         </td>
                         <td style={tdStyle()}>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '2px 8px',
-                            borderRadius: '4px',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            background: achievementBg(groupAchievement),
-                            color: achievementColor(groupAchievement),
-                          }}>
-                            {formatPct(groupAchievement)}
-                          </span>
+                          {(() => {
+                            const v = formatVariance(groupExec - groupPlan, groupPlan, 'Expense')
+                            return (
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                background: v.bg,
+                                color: v.color,
+                                fontVariantNumeric: 'tabular-nums',
+                              }}>
+                                {v.text}
+                              </span>
+                            )
+                          })()}
                         </td>
                       </tr>,
 
@@ -559,19 +572,23 @@ export default function PlanPage() {
                             {row.diff >= 0 ? '+' : ''}{formatCOP(row.diff)}
                           </td>
                           <td style={tdStyle()}>
-                            {row.achievement !== null && (
-                              <span style={{
-                                display: 'inline-block',
-                                padding: '2px 8px',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                background: achievementBg(row.achievement),
-                                color: achievementColor(row.achievement),
-                              }}>
-                                {formatPct(row.achievement)}
-                              </span>
-                            )}
+                            {(() => {
+                              const v = formatVariance(row.diff, row.plan, row.event_type)
+                              return row.plan > 0 ? (
+                                <span style={{
+                                  display: 'inline-block',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  background: v.bg,
+                                  color: v.color,
+                                  fontVariantNumeric: 'tabular-nums',
+                                }}>
+                                  {v.text}
+                                </span>
+                              ) : null
+                            })()}
                           </td>
                         </tr>
                       )) : []),
@@ -642,7 +659,7 @@ export default function PlanPage() {
                             {annualSummary.map(row => (
                               <td key={row.month} style={{ padding: '8px 16px 2px', fontSize: '11px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
                                 {isRate
-                                  ? formatPct(row[planKey] as number)
+                                  ? formatAchievementPct(row[planKey] as number)
                                   : formatCOP(row[planKey] as number)}
                               </td>
                             ))}
@@ -673,7 +690,7 @@ export default function PlanPage() {
                                   fontVariantNumeric: 'tabular-nums',
                                 }}>
                                   {isRate
-                                    ? formatPct(val)
+                                    ? formatAchievementPct(val)
                                     : formatCOP(val)}
                                 </td>
                               )
@@ -765,7 +782,7 @@ export default function PlanPage() {
                                   </div>
                                   {m.plan > 0 && (
                                     <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>
-                                      {formatPct(m.achievement)}
+                                      {formatAchievementPct(m.achievement)}
                                     </div>
                                   )}
                                 </div>

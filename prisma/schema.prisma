@@ -98,3 +98,16 @@ model EquityExecuted {
   @@unique([month_label, equity_type, platform])
   @@index([month_label])
 }
+
+model DailyFxRate {
+  id            Int      @id @default(autoincrement())
+  date          DateTime @db.Date
+  currency      String   @db.VarChar(10)
+  rate_to_cop   Decimal  @db.Decimal(12, 4)
+  rate_from_cop Decimal  @db.Decimal(12, 8)
+  source        String   @default("open.er-api.com") @db.VarChar(50)
+  fetched_at    DateTime @default(now())
+
+  @@unique([date, currency])
+  @@index([date])
+}

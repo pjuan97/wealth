@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getRateForDate } from '@/lib/fxService'
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
@@ -42,17 +43,42 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
+    // Get TRM for the transaction date
+    const txDate = new Date(body.date)
+    let fxRate = body.fx_rate ? parseFloat(body.fx_rate) : null
+
+    // Auto-fetch daily TRM if not provided
+    if (!fxRate) {
+      const dailyRate = await getRateForDate(txDate)
+      if (dailyRate) fxRate = dailyRate
+    }
+
+    // Auto-calculate COP amount from USD if needed
+    let amount = body.amount ? parseFloat(body.amount) : null
+    const usdAmount = body.usd_amount ? parseFloat(body.usd_amount) : null
+
+    if (!amount && usdAmount && fxRate) {
+      amount = Math.round(usdAmount * fxRate)
+    }
+
+    if (!amount) {
+      return NextResponse.json({ error: 'Amount required' }, { status: 400 })
+    }
+
+    // Derive month_label from date
+    const monthLabel = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`
+
     const transaction = await prisma.transaction.create({
       data: {
-        date: new Date(body.date),
-        month_label: body.month_label,
+        date: txDate,
+        month_label: body.month_label || monthLabel,
         event_type: body.event_type,
         level_1: body.level_1,
         level_2: body.level_2,
         level_3: body.level_3 || null,
-        usd_amount: body.usd_amount ? parseFloat(body.usd_amount) : null,
-        fx_rate: body.fx_rate ? parseFloat(body.fx_rate) : null,
-        amount: parseFloat(body.amount),
+        usd_amount: usdAmount,
+        fx_rate: fxRate,
+        amount,
         from_account: body.from_account || null,
         to_account: body.to_account || null,
         notes: body.notes || null,

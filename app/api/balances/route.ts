@@ -72,7 +72,7 @@ export async function GET() {
       if (name === 'Loans' && balance > 0) type = 'asset'
       if (name === 'Loans' && balance < 0) type = 'liability'
       return { name, balance, type }
-    }).filter(a => a.balance !== 0 || ASSET_ACCOUNTS.includes(a.name))
+    })
 
     const totalAssets = accounts
       .filter(a => a.type === 'asset')

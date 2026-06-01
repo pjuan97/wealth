@@ -88,9 +88,8 @@ function formatAchievementPct(n: number | null) {
 function formatVariance(diff: number, plan: number, eventType: string): {
   text: string
   color: string
-  bg: string
 } {
-  if (!plan || plan === 0) return { text: '—', color: 'var(--text-muted)', bg: 'transparent' }
+  if (!plan || plan === 0) return { text: '—', color: 'var(--text-muted)' }
 
   const pct = (diff / plan) * 100
   const isGood = eventType === 'Income' ? pct >= 0 : pct <= 0
@@ -98,9 +97,9 @@ function formatVariance(diff: number, plan: number, eventType: string): {
 
   const text = `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`
 
-  if (isNeutral) return { text, color: 'var(--text-primary)', bg: 'rgba(148,163,184,0.1)' }
-  if (isGood) return { text, color: 'var(--text-primary)', bg: 'rgba(148,163,184,0.15)' }
-  return { text, color: 'var(--text-secondary)', bg: 'transparent' }
+  if (isNeutral) return { text, color: 'var(--text-primary)' }
+  if (isGood) return { text, color: 'var(--text-primary)' }
+  return { text, color: 'var(--text-secondary)' }
 }
 
 // ─── Editable cell ────────────────────────────────────────────────────────────
@@ -193,7 +192,7 @@ export default function PlanPage() {
 
   // Expand/collapse groups
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
-    new Set(['Income', 'Expense'])
+    new Set(['Income', 'Expenses', 'Expense_Life', 'Expense_Health', 'Expense_Travels', 'Expense_Others'])
   )
 
   // ── Load monthly data ──────────────────────────────────────────────────────
@@ -444,52 +443,38 @@ export default function PlanPage() {
                 </thead>
                 <tbody>
 
-                  {/* INCOME section header */}
+                  {/* ── INCOME GROUP ─────────────────────────────────────── */}
                   <tr
                     onClick={() => toggleGroup('Income')}
                     style={{ cursor: 'pointer', background: 'var(--bg-surface)' }}
                   >
                     <td style={{
                       padding: '10px 16px 10px 32px',
-                      fontSize: '11px',
-                      fontWeight: 700,
+                      fontSize: '11px', fontWeight: 700,
                       color: 'var(--text-secondary)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase', letterSpacing: '0.08em',
                       borderBottom: '1px solid var(--border)',
                     }}>
                       {expandedGroups.has('Income') ? '▾' : '▸'} Income
                     </td>
-                    {/* Plan total */}
-                    <td style={{ ...tdStyle(), color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                    <td style={{ ...tdStyle(), color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
                       {formatCOP(incomeRows.reduce((s, r) => s + r.plan, 0))}
                     </td>
-                    {/* Executed total */}
-                    <td style={{ ...tdStyle(), color: 'var(--text-secondary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                    <td style={{ ...tdStyle(), fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                       {formatCOP(incomeRows.reduce((s, r) => s + r.executed, 0))}
                     </td>
-                    {/* Difference total */}
-                    <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)' }}>
+                    <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                       {(() => {
                         const diff = incomeRows.reduce((s, r) => s + r.diff, 0)
                         return `${diff >= 0 ? '+' : ''}${formatCOP(diff)}`
                       })()}
                     </td>
-                    {/* Variance % */}
-                    <td style={tdStyle()}>
+                    <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums' }}>
                       {(() => {
                         const totalPlan = incomeRows.reduce((s, r) => s + r.plan, 0)
                         const totalExec = incomeRows.reduce((s, r) => s + r.executed, 0)
                         const v = formatVariance(totalExec - totalPlan, totalPlan, 'Income')
-                        return (
-                          <span style={{
-                            display: 'inline-block', padding: '2px 8px', borderRadius: '4px',
-                            fontSize: '11px', fontWeight: 600,
-                            background: v.bg, color: v.color, fontVariantNumeric: 'tabular-nums',
-                          }}>
-                            {v.text}
-                          </span>
-                        )
+                        return <span style={{ fontSize: '12px', fontWeight: 600, color: v.color }}>{v.text}</span>
                       })()}
                     </td>
                   </tr>
@@ -502,66 +487,82 @@ export default function PlanPage() {
                     >
                       <td style={{ ...tdStyle('left'), paddingLeft: '48px', color: 'var(--text-secondary)' }}>
                         {row.level_2}
-                        {row.level_3 && (
-                          <span style={{ color: 'var(--text-muted)', marginLeft: '6px' }}>· {row.level_3}</span>
-                        )}
+                        {row.level_3 && <span style={{ color: 'var(--text-muted)', marginLeft: '6px' }}>· {row.level_3}</span>}
                       </td>
                       <td style={tdStyle()}>
-                        <EditableAmount
-                          value={row.plan}
-                          onSave={v => updatePlan(row.id, v)}
-                        />
+                        <EditableAmount value={row.plan} onSave={v => updatePlan(row.id, v)} />
                       </td>
                       <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
                         {formatCOP(row.executed)}
                       </td>
-                      <td style={{ ...tdStyle(), color: row.diff >= 0 ? 'var(--text-primary)' : 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
-                        {row.diff >= 0 ? '+' : ''}{formatCOP(row.diff)}
+                      <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                        {`${row.diff >= 0 ? '+' : ''}${formatCOP(row.diff)}`}
                       </td>
-                      <td style={tdStyle()}>
+                      <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums' }}>
                         {(() => {
                           const v = formatVariance(row.diff, row.plan, row.event_type)
-                          return (
-                            <span style={{
-                              display: 'inline-block',
-                              padding: '2px 8px',
-                              borderRadius: '4px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              background: v.bg,
-                              color: v.color,
-                              fontVariantNumeric: 'tabular-nums',
-                            }}>
-                              {v.text}
-                            </span>
-                          )
+                          return <span style={{ fontSize: '12px', fontWeight: 600, color: v.color }}>{v.text}</span>
                         })()}
                       </td>
                     </tr>
                   ))}
 
-                  {/* EXPENSE sections — grouped by level_2 */}
-                  {EXPENSE_ORDER.filter(l2 => expenseByL2[l2]).map((l2) => {
+                  {/* ── EXPENSES WRAPPER ─────────────────────────────────── */}
+                  <tr
+                    onClick={() => toggleGroup('Expenses')}
+                    style={{ cursor: 'pointer', background: 'var(--bg-surface)' }}
+                  >
+                    <td style={{
+                      padding: '10px 16px 10px 32px',
+                      fontSize: '11px', fontWeight: 700,
+                      color: 'var(--text-secondary)',
+                      textTransform: 'uppercase', letterSpacing: '0.08em',
+                      borderBottom: '1px solid var(--border)',
+                      borderTop: '2px solid var(--border-strong)',
+                    }}>
+                      {expandedGroups.has('Expenses') ? '▾' : '▸'} Expenses
+                    </td>
+                    <td style={{ ...tdStyle(), color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
+                      {totals ? formatCOP(totals.expense_plan) : '—'}
+                    </td>
+                    <td style={{ ...tdStyle(), fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
+                      {totals ? formatCOP(totals.expense_exec) : '—'}
+                    </td>
+                    <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
+                      {totals ? (() => {
+                        const diff = totals.expense_exec - totals.expense_plan
+                        return `${diff >= 0 ? '+' : ''}${formatCOP(diff)}`
+                      })() : '—'}
+                    </td>
+                    <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
+                      {totals && (() => {
+                        const v = formatVariance(totals.expense_exec - totals.expense_plan, totals.expense_plan, 'Expense')
+                        return <span style={{ fontSize: '12px', fontWeight: 600, color: v.color }}>{v.text}</span>
+                      })()}
+                    </td>
+                  </tr>
+
+                  {/* ── EXPENSE SUBCATEGORIES (Life, Health, Travels, Others) */}
+                  {expandedGroups.has('Expenses') && EXPENSE_ORDER.filter(l2 => expenseByL2[l2]).map(l2 => {
                     const l2rows = expenseByL2[l2]
                     const groupKey = `Expense_${l2}`
                     const isExpanded = expandedGroups.has(groupKey)
                     const groupPlan = l2rows.reduce((s, r) => s + r.plan, 0)
                     const groupExec = l2rows.reduce((s, r) => s + r.executed, 0)
+                    const groupDiff = groupExec - groupPlan
 
                     return [
-                      // Group header
+                      // Subcategory header
                       <tr
                         key={`header_${l2}`}
                         onClick={() => toggleGroup(groupKey)}
-                        style={{ cursor: 'pointer', background: 'var(--bg-surface)' }}
+                        style={{ cursor: 'pointer', background: 'var(--bg-elevated)' }}
                       >
                         <td style={{
-                          padding: '10px 16px 10px 32px',
-                          fontSize: '11px',
-                          fontWeight: 700,
+                          padding: '10px 16px 10px 48px',
+                          fontSize: '11px', fontWeight: 600,
                           color: 'var(--text-secondary)',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.08em',
+                          textTransform: 'uppercase', letterSpacing: '0.06em',
                           borderBottom: '1px solid var(--border)',
                         }}>
                           {isExpanded ? '▾' : '▸'} {l2}
@@ -569,155 +570,49 @@ export default function PlanPage() {
                         <td style={{ ...tdStyle(), color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
                           {formatCOP(groupPlan)}
                         </td>
-                        <td style={{ ...tdStyle(), color: 'var(--text-secondary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                        <td style={{ ...tdStyle(), fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                           {formatCOP(groupExec)}
                         </td>
-                        <td style={{ ...tdStyle(), color: (groupExec - groupPlan) <= 0 ? 'var(--text-primary)' : 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
-                          {(groupExec - groupPlan) >= 0 ? '+' : ''}{formatCOP(groupExec - groupPlan)}
+                        <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                          {`${groupDiff >= 0 ? '+' : ''}${formatCOP(groupDiff)}`}
                         </td>
-                        <td style={tdStyle()}>
+                        <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums' }}>
                           {(() => {
-                            const v = formatVariance(groupExec - groupPlan, groupPlan, 'Expense')
-                            return (
-                              <span style={{
-                                display: 'inline-block',
-                                padding: '2px 8px',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                background: v.bg,
-                                color: v.color,
-                                fontVariantNumeric: 'tabular-nums',
-                              }}>
-                                {v.text}
-                              </span>
-                            )
+                            const v = formatVariance(groupDiff, groupPlan, 'Expense')
+                            return <span style={{ fontSize: '12px', fontWeight: 600, color: v.color }}>{v.text}</span>
                           })()}
                         </td>
                       </tr>,
 
-                      // Expanded rows
+                      // Individual rows
                       ...(isExpanded ? l2rows.map(row => (
                         <tr
                           key={row.id}
                           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-surface)' }}
                           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                         >
-                          <td style={{ ...tdStyle('left'), paddingLeft: '56px', color: 'var(--text-muted)' }}>
+                          <td style={{ ...tdStyle('left'), paddingLeft: '64px', color: 'var(--text-muted)' }}>
                             {row.level_3 || row.level_2}
                           </td>
                           <td style={tdStyle()}>
-                            <EditableAmount
-                              value={row.plan}
-                              onSave={v => updatePlan(row.id, v)}
-                            />
+                            <EditableAmount value={row.plan} onSave={v => updatePlan(row.id, v)} />
                           </td>
-                          <td style={{ ...tdStyle(), color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+                          <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                             {formatCOP(row.executed)}
                           </td>
-                          <td style={{ ...tdStyle(), color: (row.diff) <= 0 ? 'var(--text-primary)' : 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
-                            {row.diff >= 0 ? '+' : ''}{formatCOP(row.diff)}
+                          <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                            {`${row.diff >= 0 ? '+' : ''}${formatCOP(row.diff)}`}
                           </td>
-                          <td style={tdStyle()}>
+                          <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums' }}>
                             {(() => {
                               const v = formatVariance(row.diff, row.plan, row.event_type)
-                              return row.plan > 0 ? (
-                                <span style={{
-                                  display: 'inline-block',
-                                  padding: '2px 8px',
-                                  borderRadius: '4px',
-                                  fontSize: '11px',
-                                  fontWeight: 600,
-                                  background: v.bg,
-                                  color: v.color,
-                                  fontVariantNumeric: 'tabular-nums',
-                                }}>
-                                  {v.text}
-                                </span>
-                              ) : null
+                              return <span style={{ fontSize: '12px', fontWeight: 600, color: v.color }}>{v.text}</span>
                             })()}
                           </td>
                         </tr>
                       )) : []),
                     ]
                   })}
-
-                  {/* ── TOTALS ─────────────────────────────────────────────── */}
-                  {totals && (() => {
-                    const incomeDiff = totals.income_exec - totals.income_plan
-                    const expenseDiff = totals.expense_exec - totals.expense_plan
-                    const vIncome = formatVariance(incomeDiff, totals.income_plan, 'Income')
-                    const vExpense = formatVariance(expenseDiff, totals.expense_plan, 'Expense')
-
-                    return (
-                      <>
-                        {/* Total Income */}
-                        <tr style={{ background: 'var(--bg-elevated)', borderTop: '2px solid var(--border-strong)' }}>
-                          <td style={{
-                            padding: '12px 16px 12px 32px',
-                            fontSize: '12px',
-                            fontWeight: 700,
-                            color: 'var(--text-primary)',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.06em',
-                          }}>
-                            Total Income
-                          </td>
-                          <td style={{ ...tdStyle(), fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                            {formatCOP(totals.income_plan)}
-                          </td>
-                          <td style={{ ...tdStyle(), fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                            {formatCOP(totals.income_exec)}
-                          </td>
-                          <td style={{ ...tdStyle(), fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                            {`${incomeDiff >= 0 ? '+' : ''}${formatCOP(incomeDiff)}`}
-                          </td>
-                          <td style={tdStyle()}>
-                            <span style={{
-                              display: 'inline-block', padding: '2px 8px', borderRadius: '4px',
-                              fontSize: '11px', fontWeight: 700,
-                              background: vIncome.bg, color: vIncome.color,
-                            }}>
-                              {vIncome.text}
-                            </span>
-                          </td>
-                        </tr>
-
-                        {/* Total Expenses */}
-                        <tr style={{ background: 'var(--bg-elevated)', borderTop: '1px solid var(--border)' }}>
-                          <td style={{
-                            padding: '12px 16px 12px 32px',
-                            fontSize: '12px',
-                            fontWeight: 700,
-                            color: 'var(--text-secondary)',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.06em',
-                          }}>
-                            Total Expenses
-                          </td>
-                          <td style={{ ...tdStyle(), fontWeight: 700, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
-                            {formatCOP(totals.expense_plan)}
-                          </td>
-                          <td style={{ ...tdStyle(), fontWeight: 700, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
-                            {formatCOP(totals.expense_exec)}
-                          </td>
-                          <td style={{ ...tdStyle(), fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-                            color: expenseDiff <= 0 ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
-                            {`${expenseDiff >= 0 ? '+' : ''}${formatCOP(expenseDiff)}`}
-                          </td>
-                          <td style={tdStyle()}>
-                            <span style={{
-                              display: 'inline-block', padding: '2px 8px', borderRadius: '4px',
-                              fontSize: '11px', fontWeight: 700,
-                              background: vExpense.bg, color: vExpense.color,
-                            }}>
-                              {vExpense.text}
-                            </span>
-                          </td>
-                        </tr>
-                      </>
-                    )
-                  })()}
 
                 </tbody>
               </table>

@@ -513,6 +513,7 @@ export default function EquityForecastPage() {
                   <tr>
                     <th style={{ ...thStyle('left'), paddingLeft: '32px', width: '220px' }}>Account</th>
                     <th style={thStyle()}>Annual Rate</th>
+                    <th style={thStyle()}>Monthly Rate</th>
                     <th style={thStyle()}>Start Balance</th>
                     <th style={thStyle()}>Net Flow</th>
                     <th style={thStyle()}>Expected End</th>
@@ -554,6 +555,11 @@ export default function EquityForecastPage() {
                             value={row.annual_rate}
                             onSave={v => updateAnnualRate(row.id, v)}
                           />
+                        </td>
+
+                        {/* Monthly Rate — computed, read only */}
+                        <td style={{ ...tdStyle(), fontSize: '11px' }}>
+                          {(row.monthly_rate * 100).toFixed(4)}%
                         </td>
 
                         {/* Start Balance — editable only for Jan */}
@@ -611,6 +617,7 @@ export default function EquityForecastPage() {
                       <td style={{ ...tdStyle('left'), paddingLeft: '32px', fontWeight: 700 }}>
                         Portfolio Total
                       </td>
+                      <td style={tdStyle()} />
                       <td style={tdStyle()} />
                       <td style={{ ...tdStyle(), fontWeight: 700 }}>
                         {formatCOP(totals.start_balance)}

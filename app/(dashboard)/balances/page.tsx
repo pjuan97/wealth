@@ -187,7 +187,7 @@ export default function BalancesPage() {
               borderRadius: '14px',
               padding: '20px 24px',
             }}>
-              <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>
+              <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>
                 {card.label}
               </p>
               {/* COP — large and prominent */}
@@ -492,7 +492,7 @@ export default function BalancesPage() {
           borderRadius: '14px',
           padding: '20px 24px',
         }}>
-          <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Asset Allocation
           </p>
           {/* Progress bar */}

@@ -92,8 +92,7 @@ export default function Sidebar() {
         style={{ borderBottom: '1px solid var(--border)' }}
       >
         <span
-          className="font-bold text-lg tracking-tight"
-          style={{ color: 'var(--text-primary)' }}
+          style={{ color: 'var(--accent)', fontWeight: 800, fontSize: '16px' }}
         >
           Wealth
         </span>
@@ -110,38 +109,34 @@ export default function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all duration-100"
-              style={
-                isActive
-                  ? {
-                      background: 'var(--bg-hover)',
-                      color: 'var(--text-primary)',
-                    }
-                  : {
-                      color: 'var(--text-muted)',
-                    }
-              }
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '8px 12px',
+                fontSize: '13px',
+                fontWeight: 500,
+                textDecoration: 'none',
+                borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+                background: isActive ? 'var(--accent-subtle)' : 'transparent',
+                color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+                transition: 'all 0.1s',
+              }}
               onMouseEnter={e => {
                 if (!isActive) {
                   (e.currentTarget as HTMLElement).style.background = 'var(--bg-elevated)'
-                  ;(e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'
+                  ;(e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'
                 }
               }}
               onMouseLeave={e => {
                 if (!isActive) {
                   (e.currentTarget as HTMLElement).style.background = 'transparent'
-                  ;(e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'
+                  ;(e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'
                 }
               }}
             >
-              <span className="shrink-0 opacity-80">{item.icon}</span>
+              <span style={{ flexShrink: 0, opacity: 0.8 }}>{item.icon}</span>
               <span>{item.label}</span>
-              {isActive && (
-                <span
-                  className="ml-auto w-1.5 h-1.5 rounded-full"
-                  style={{ background: 'var(--text-secondary)' }}
-                />
-              )}
             </Link>
           )
         })}

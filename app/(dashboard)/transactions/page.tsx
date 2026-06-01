@@ -67,13 +67,13 @@ function getUSD(t: Transaction, fxRate: number | null): number {
 }
 
 const EVENT_BADGE_STYLE: Record<string, React.CSSProperties> = {
-  Income:         { background: 'rgba(148,163,184,0.15)', color: 'var(--text-primary)' },
+  Income:         { background: 'var(--accent-subtle)', color: 'var(--accent)' },
   Expense:        { background: 'rgba(148,163,184,0.08)', color: 'var(--text-secondary)' },
-  Transfer:       { background: 'rgba(148,163,184,0.06)', color: 'var(--text-muted)' },
-  Investment:     { background: 'rgba(148,163,184,0.06)', color: 'var(--text-muted)' },
-  Withdrawal:     { background: 'rgba(148,163,184,0.06)', color: 'var(--text-muted)' },
-  Debt_Payment:   { background: 'rgba(148,163,184,0.06)', color: 'var(--text-muted)' },
-  Opening_Balance:{ background: 'rgba(148,163,184,0.04)', color: 'var(--text-muted)' },
+  Transfer:       { background: 'var(--bg-elevated)', color: 'var(--text-secondary)' },
+  Investment:     { background: 'var(--bg-elevated)', color: 'var(--text-secondary)' },
+  Withdrawal:     { background: 'var(--bg-elevated)', color: 'var(--text-secondary)' },
+  Debt_Payment:   { background: 'var(--bg-elevated)', color: 'var(--text-secondary)' },
+  Opening_Balance:{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' },
 }
 
 interface Filters {
@@ -246,9 +246,9 @@ export default function TransactionsPage() {
     top: 0,
     background: 'var(--bg-base)',
     zIndex: 10,
-    color: 'var(--text-muted)',
+    color: 'var(--text-secondary)',
     fontSize: '11px',
-    fontWeight: '500',
+    fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: '0.04em',
     padding: '10px 10px 4px',
@@ -287,8 +287,8 @@ export default function TransactionsPage() {
               alignItems: 'center',
               gap: '6px',
               padding: '8px 16px',
-              background: 'var(--text-primary)',
-              color: 'var(--text-inverse)',
+              background: 'var(--accent)',
+              color: '#ffffff',
               border: 'none',
               borderRadius: '8px',
               fontSize: '13px',
@@ -318,10 +318,10 @@ export default function TransactionsPage() {
                 background: 'transparent',
                 border: 'none',
                 borderBottom: selectedMonth === m.key
-                  ? '2px solid var(--text-primary)'
+                  ? '2px solid var(--accent)'
                   : '2px solid transparent',
-                color: 'var(--text-primary)',
-                opacity: selectedMonth === m.key ? 1 : 0.6,
+                color: selectedMonth === m.key ? 'var(--accent)' : 'var(--text-secondary)',
+                opacity: 1,
                 whiteSpace: 'nowrap',
                 marginBottom: '-1px',
               }}
@@ -387,17 +387,16 @@ export default function TransactionsPage() {
             {/* Label row */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{
-                fontSize: '11px',
+                fontSize: '13px',
                 fontWeight: 700,
-                color: card.accent,
-                opacity: 0.7,
+                color: 'var(--accent)',
               }}>
                 {card.icon}
               </span>
               <span style={{
-                fontSize: '11px',
-                fontWeight: 600,
-                color: 'var(--text-muted)',
+                fontSize: '12px',
+                fontWeight: 700,
+                color: 'var(--text-secondary)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.06em',
               }}>

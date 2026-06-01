@@ -98,7 +98,7 @@ function formatVariance(diff: number, plan: number, eventType: string): {
   const text = `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`
 
   if (isNeutral) return { text, color: 'var(--text-primary)' }
-  if (isGood) return { text, color: 'var(--text-primary)' }
+  if (isGood) return { text, color: 'var(--accent)' }
   return { text, color: 'var(--text-secondary)' }
 }
 
@@ -279,8 +279,8 @@ export default function PlanPage() {
   const thStyle = (align: 'left' | 'right' = 'right'): React.CSSProperties => ({
     padding: '10px 16px',
     fontSize: '11px',
-    fontWeight: 600,
-    color: 'var(--text-muted)',
+    fontWeight: 700,
+    color: 'var(--text-secondary)',
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
     textAlign: align,
@@ -342,9 +342,9 @@ export default function PlanPage() {
                 background: 'transparent',
                 border: 'none',
                 borderBottom: tab === t
-                  ? '2px solid var(--text-primary)'
+                  ? '2px solid var(--accent)'
                   : '2px solid transparent',
-                color: 'var(--text-primary)',
+                color: tab === t ? 'var(--accent)' : 'var(--text-secondary)',
                 marginBottom: '-1px',
               }}
             >
@@ -413,7 +413,7 @@ export default function PlanPage() {
                   borderRadius: '10px',
                   padding: '12px 16px',
                 }}>
-                  <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                  <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
                     {card.label}
                   </p>
                   <p style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>

@@ -155,7 +155,7 @@ function EditableMarketValue({
         opacity: saving ? 0.5 : 1,
       }}
     >
-      {value !== null ? formatCOP(value) : <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>— enter value</span>}
+      {value !== null ? formatCOP(value) : <span style={{ color: 'var(--accent)', fontSize: '11px' }}>— enter value</span>}
     </span>
   )
 }
@@ -383,8 +383,8 @@ export default function EquityForecastPage() {
   const thStyle = (align: 'left' | 'right' = 'right'): React.CSSProperties => ({
     padding: '10px 16px',
     fontSize: '11px',
-    fontWeight: 600,
-    color: 'var(--text-muted)',
+    fontWeight: 700,
+    color: 'var(--text-secondary)',
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
     textAlign: align,
@@ -432,8 +432,8 @@ export default function EquityForecastPage() {
               fontSize: '13px', fontWeight: 500,
               cursor: 'pointer',
               background: 'transparent', border: 'none',
-              borderBottom: tab === t ? '2px solid var(--text-primary)' : '2px solid transparent',
-              color: 'var(--text-primary)',
+              borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
+              color: tab === t ? 'var(--accent)' : 'var(--text-secondary)',
               marginBottom: '-1px',
             }}>
               {t === 'monthly' ? 'Monthly Detail' : 'Annual Overview'}
@@ -490,7 +490,7 @@ export default function EquityForecastPage() {
                   borderRadius: '10px',
                   padding: '12px 16px',
                 }}>
-                  <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                  <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
                     {card.label}
                   </p>
                   <p style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>

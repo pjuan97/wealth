@@ -179,8 +179,8 @@ export default function FxRatesPage() {
             style={{
               display: 'flex', alignItems: 'center', gap: '8px',
               padding: '8px 16px',
-              background: fetching ? 'var(--bg-elevated)' : 'var(--text-primary)',
-              color: fetching ? 'var(--text-muted)' : 'var(--text-inverse)',
+              background: fetching ? 'var(--bg-elevated)' : 'var(--accent)',
+              color: fetching ? 'var(--text-muted)' : '#ffffff',
               border: 'none', borderRadius: '8px',
               fontSize: '13px', fontWeight: 600,
               cursor: fetching ? 'not-allowed' : 'pointer',
@@ -212,7 +212,7 @@ export default function FxRatesPage() {
                 borderRadius: '12px',
                 padding: '16px 20px',
               }}>
-                <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>
+                <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>
                   {card.label}
                 </p>
                 <p style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
@@ -272,9 +272,9 @@ export default function FxRatesPage() {
               style={{
                 display: 'flex', alignItems: 'center', gap: '8px',
                 padding: '8px 20px',
-                background: 'var(--bg-elevated)',
-                color: backfilling ? 'var(--text-muted)' : 'var(--text-primary)',
-                border: '1px solid var(--border)',
+                background: 'transparent',
+                color: backfilling ? 'var(--text-muted)' : 'var(--accent)',
+                border: '1px solid var(--accent-border)',
                 borderRadius: '8px',
                 fontSize: '13px', fontWeight: 600,
                 cursor: backfilling ? 'not-allowed' : 'pointer',
@@ -386,8 +386,8 @@ export default function FxRatesPage() {
                     <th key={h} style={{
                       padding: '10px 20px',
                       textAlign: i >= 1 && i <= 2 ? 'right' : 'left',
-                      fontSize: '11px', fontWeight: 600,
-                      color: 'var(--text-muted)',
+                      fontSize: '11px', fontWeight: 700,
+                      color: 'var(--text-secondary)',
                       textTransform: 'uppercase', letterSpacing: '0.05em',
                     }}>
                       {h}
@@ -408,7 +408,7 @@ export default function FxRatesPage() {
                       {i === 0 && (
                         <span style={{
                           marginLeft: '8px', fontSize: '10px', fontWeight: 600,
-                          background: 'var(--bg-elevated)', color: 'var(--text-secondary)',
+                          background: 'var(--accent-subtle)', color: 'var(--accent)',
                           padding: '2px 6px', borderRadius: '4px',
                           textTransform: 'uppercase', letterSpacing: '0.05em',
                         }}>Latest</span>
@@ -456,8 +456,8 @@ export default function FxRatesPage() {
                     <th key={h} style={{
                       padding: '10px 20px',
                       textAlign: i === 1 ? 'right' : 'left',
-                      fontSize: '11px', fontWeight: 600,
-                      color: 'var(--text-muted)',
+                      fontSize: '11px', fontWeight: 700,
+                      color: 'var(--text-secondary)',
                       textTransform: 'uppercase', letterSpacing: '0.05em',
                     }}>
                       {h}

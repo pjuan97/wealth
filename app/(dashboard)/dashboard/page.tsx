@@ -1,21 +1,33 @@
 export default function DashboardPage() {
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      {/* Header */}
+      <div style={{
+        padding: '20px 32px 16px',
+        borderBottom: '1px solid var(--border)',
+        flexShrink: 0,
+      }}>
+        <h1 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)' }}>
           Dashboard
         </h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+        <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
           KPIs, charts, and monthly summary
         </p>
       </div>
-      <div
-        className="rounded-xl p-12 text-center"
-        style={{ border: '1px solid var(--border)', background: 'var(--bg-surface)' }}
-      >
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-          Coming in WEALTH-010
-        </p>
+      <div style={{ padding: '32px' }}>
+        <div
+          style={{
+            border: '1px solid var(--border)',
+            background: 'var(--bg-surface)',
+            borderRadius: '12px',
+            padding: '48px',
+            textAlign: 'center',
+          }}
+        >
+          <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+            Coming in WEALTH-010
+          </p>
+        </div>
       </div>
     </div>
   )

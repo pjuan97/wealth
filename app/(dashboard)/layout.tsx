@@ -6,9 +6,9 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex min-h-screen" style={{ background: 'var(--bg-base)' }}>
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg-base)' }}>
       <Sidebar />
-      <main className="flex-1 overflow-auto min-w-0">
+      <main style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
         {children}
       </main>
     </div>

@@ -72,10 +72,18 @@ export default function Sidebar() {
 
   return (
     <aside
-      className="w-60 min-h-screen flex flex-col shrink-0"
       style={{
+        width: '160px',
+        minWidth: '160px',
+        height: '100vh',
+        position: 'sticky',
+        top: 0,
+        display: 'flex',
+        flexDirection: 'column',
         background: 'var(--bg-surface)',
         borderRight: '1px solid var(--border)',
+        overflow: 'hidden',
+        flexShrink: 0,
       }}
     >
       {/* Logo */}
@@ -92,7 +100,7 @@ export default function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-5 space-y-1">
+      <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
         {NAV_ITEMS.map((item) => {
           const isActive =
             pathname === item.href ||
@@ -147,6 +155,7 @@ export default function Sidebar() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          flexShrink: 0,
         }}
       >
         <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>

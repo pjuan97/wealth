@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import TransactionForm from '@/app/components/TransactionForm'
 import ConfirmDialog from '@/app/components/ConfirmDialog'
 
@@ -164,6 +164,59 @@ export default function TransactionsPage() {
 
   const hasActiveFilters = Object.values(filters).some(v => v !== '')
 
+  // Sort
+  const [sortConfig, setSortConfig] = useState<{
+    key: string
+    direction: 'asc' | 'desc'
+  } | null>(null)
+
+  const handleSort = (key: string) => {
+    setSortConfig(prev =>
+      prev?.key === key
+        ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
+        : { key, direction: 'asc' }
+    )
+  }
+
+  const sortedTransactions = useMemo(() => {
+    if (!sortConfig) return filtered
+    return [...filtered].sort((a, b) => {
+      let aVal: string | number = ''
+      let bVal: string | number = ''
+
+      switch (sortConfig.key) {
+        case 'date':
+          aVal = new Date(a.date).getTime()
+          bVal = new Date(b.date).getTime()
+          break
+        case 'event_type':
+          aVal = a.event_type || ''
+          bVal = b.event_type || ''
+          break
+        case 'level_2':
+          aVal = a.level_2 || ''
+          bVal = b.level_2 || ''
+          break
+        case 'level_3':
+          aVal = a.level_3 || ''
+          bVal = b.level_3 || ''
+          break
+        case 'amount':
+          aVal = Number(a.amount) || 0
+          bVal = Number(b.amount) || 0
+          break
+        case 'usd_amount':
+          aVal = Number(a.usd_amount) || 0
+          bVal = Number(b.usd_amount) || 0
+          break
+      }
+
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [filtered, sortConfig])
+
   // Totals (from filtered)
   const incomeRows = filtered.filter(t => t.event_type === 'Income')
   const expenseRows = filtered.filter(t => t.event_type === 'Expense')
@@ -208,53 +261,68 @@ export default function TransactionsPage() {
     <div className="flex flex-col h-screen">
 
       {/* Page header */}
-      <div
-        className="px-8 py-6 shrink-0 flex items-start justify-between"
-        style={{ borderBottom: '1px solid var(--border)' }}
-      >
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
-            Transactions
-          </h1>
-          <p className="text-sm mt-1 font-medium" style={{ color: 'var(--text-muted)' }}>
-            {monthLabel}
-          </p>
+      <div style={{
+        padding: '20px 32px 0',
+        borderBottom: '1px solid var(--border)',
+        flexShrink: 0,
+      }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '12px',
+        }}>
+          <div>
+            <h1 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)' }}>
+              Transactions
+            </h1>
+            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px' }}>
+              {monthLabel}
+            </p>
+          </div>
+          <button
+            onClick={() => setFormOpen(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 16px',
+              background: 'var(--text-primary)',
+              color: 'var(--text-inverse)',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            + New Transaction
+          </button>
         </div>
-        <button
-          onClick={() => setFormOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold"
-          style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)' }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M12 5v14M5 12h14"/>
-          </svg>
-          New Transaction
-        </button>
-      </div>
 
-      {/* Month tabs */}
-      <div
-        className="px-6 shrink-0 overflow-x-auto"
-        style={{
-          background: 'var(--bg-surface)',
-          borderBottom: '1px solid var(--border)',
-        }}
-      >
-        <div className="flex items-end gap-1 pt-3" style={{ minWidth: 'max-content' }}>
+        {/* Month tabs */}
+        <div style={{
+          display: 'flex',
+          gap: '0',
+          overflowX: 'auto',
+        }}>
           {MONTHS.map(m => (
             <button
               key={m.key}
               onClick={() => setSelectedMonth(m.key)}
-              className="px-5 py-2.5 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap"
               style={{
-                color: selectedMonth === m.key ? 'var(--text-primary)' : 'var(--text-muted)',
-                background: selectedMonth === m.key ? 'var(--bg-base)' : 'transparent',
-                border: selectedMonth === m.key
-                  ? '1px solid var(--border)'
-                  : '1px solid transparent',
+                padding: '10px 16px',
+                fontSize: '13px',
+                fontWeight: selectedMonth === m.key ? 700 : 500,
+                cursor: 'pointer',
+                background: 'transparent',
+                border: 'none',
                 borderBottom: selectedMonth === m.key
-                  ? '1px solid var(--bg-base)'
-                  : '1px solid transparent',
+                  ? '2px solid var(--text-primary)'
+                  : '2px solid transparent',
+                color: 'var(--text-primary)',
+                opacity: selectedMonth === m.key ? 1 : 0.6,
+                whiteSpace: 'nowrap',
                 marginBottom: '-1px',
               }}
             >
@@ -264,90 +332,154 @@ export default function TransactionsPage() {
         </div>
       </div>
 
-      {/* Summary cards */}
-      <div
-        className="px-8 py-4 shrink-0 flex items-stretch gap-4"
-        style={{ borderBottom: '1px solid var(--border)' }}
-      >
+      {/* Summary bar */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr 1fr 1fr',
+        gap: '0',
+        borderBottom: '1px solid var(--border)',
+        flexShrink: 0,
+      }}>
         {[
-          { label: 'Income', cop: totalIncomeCOP, usd: totalIncomeUSD, positive: true },
-          { label: 'Expense', cop: totalExpenseCOP, usd: totalExpenseUSD, positive: false },
-          { label: 'Balance', cop: balanceCOP, usd: balanceUSD, positive: balanceCOP >= 0 },
-        ].map(item => (
-          <div
-            key={item.label}
-            className="flex-1 rounded-xl px-5 py-4"
-            style={{
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border)',
-            }}
-          >
-            <p className="text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>
-              {item.label}
-            </p>
-            <p
-              className="text-lg font-bold tabular-nums"
-              style={{ color: item.positive ? 'var(--text-primary)' : 'var(--text-secondary)' }}
-            >
-              {formatCOP(item.cop)}
-            </p>
-            <p className="text-xs mt-0.5 tabular-nums" style={{ color: 'var(--text-muted)' }}>
-              {formatUSD(item.usd)}
-            </p>
+          {
+            label: 'Income',
+            icon: '\u2191',
+            cop: totalIncomeCOP,
+            usd: totalIncomeUSD,
+            accent: 'var(--text-primary)',
+            borderColor: 'rgba(148,163,184,0.6)',
+          },
+          {
+            label: 'Expense',
+            icon: '\u2193',
+            cop: totalExpenseCOP,
+            usd: totalExpenseUSD,
+            accent: 'var(--text-secondary)',
+            borderColor: 'rgba(100,116,139,0.5)',
+          },
+          {
+            label: 'Balance',
+            icon: '=',
+            cop: balanceCOP,
+            usd: balanceUSD,
+            accent: 'var(--text-primary)',
+            borderColor: 'rgba(148,163,184,0.3)',
+          },
+          {
+            label: 'Transactions',
+            icon: '#',
+            cop: null as number | null,
+            usd: null as number | null,
+            count: filtered.length,
+            accent: 'var(--text-muted)',
+            borderColor: 'rgba(71,85,105,0.4)',
+          },
+        ].map(card => (
+          <div key={card.label} style={{
+            padding: '16px 24px',
+            borderLeft: `3px solid ${card.borderColor}`,
+            borderRight: '1px solid var(--border)',
+            background: 'var(--bg-surface)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+          }}>
+            {/* Label row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 700,
+                color: card.accent,
+                opacity: 0.7,
+              }}>
+                {card.icon}
+              </span>
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 600,
+                color: 'var(--text-muted)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+              }}>
+                {card.label}
+              </span>
+            </div>
+            {/* Value */}
+            {card.cop !== null ? (
+              <>
+                <p style={{
+                  fontSize: '18px',
+                  fontWeight: 800,
+                  color: 'var(--text-primary)',
+                  fontVariantNumeric: 'tabular-nums',
+                  lineHeight: 1.1,
+                }}>
+                  {formatCOP(card.cop)}
+                </p>
+                <p style={{
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  color: 'var(--text-secondary)',
+                  fontVariantNumeric: 'tabular-nums',
+                }}>
+                  {formatUSD(card.usd ?? 0)}
+                </p>
+              </>
+            ) : (
+              <p style={{
+                fontSize: '28px',
+                fontWeight: 800,
+                color: 'var(--text-primary)',
+                fontVariantNumeric: 'tabular-nums',
+                lineHeight: 1.1,
+              }}>
+                {card.count}
+              </p>
+            )}
           </div>
         ))}
-
-        {/* Transaction count */}
-        <div
-          className="rounded-xl px-5 py-4 flex flex-col justify-between"
-          style={{
-            background: 'var(--bg-surface)',
-            border: '1px solid var(--border)',
-            minWidth: '120px',
-          }}
-        >
-          <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
-            Transactions
-          </p>
-          <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
-            {filtered.length}
-          </p>
-          {hasActiveFilters && (
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              of {transactions.length} total
-            </p>
-          )}
-        </div>
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto">
-        <table className="w-full border-collapse text-sm" style={{ minWidth: '1100px' }}>
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '1100px' }}>
           <thead>
             {/* Column headers */}
             <tr>
               {[
-                { label: 'Date', width: '80px' },
-                { label: 'Type', width: '120px' },
-                { label: 'Category', width: '110px' },
-                { label: 'Subcategory', width: '130px' },
-                { label: 'From', width: '150px' },
-                { label: 'To', width: '150px' },
-                { label: 'Amount USD', width: '110px' },
-                { label: 'Amount COP', width: '120px' },
-                { label: 'Notes', width: '180px' },
-                { label: '', width: '40px' },
+                { label: 'Date', width: '80px', sortKey: 'date' },
+                { label: 'Type', width: '120px', sortKey: 'event_type' },
+                { label: 'Category', width: '110px', sortKey: 'level_2' },
+                { label: 'Subcategory', width: '130px', sortKey: 'level_3' },
+                { label: 'From', width: '150px', sortKey: null },
+                { label: 'To', width: '150px', sortKey: null },
+                { label: 'Amount USD', width: '110px', sortKey: 'usd_amount' },
+                { label: 'Amount COP', width: '120px', sortKey: 'amount' },
+                { label: 'Notes', width: '180px', sortKey: null },
+                { label: '', width: '40px', sortKey: null },
               ].map((col, i) => (
                 <th
                   key={col.label || i}
+                  onClick={col.sortKey ? () => handleSort(col.sortKey!) : undefined}
                   style={{
                     ...thStyle,
                     width: col.width,
                     paddingLeft: i === 0 ? '32px' : '10px',
                     textAlign: col.label.includes('Amount') ? 'right' : 'left',
+                    cursor: col.sortKey ? 'pointer' : 'default',
+                    userSelect: 'none',
                   }}
                 >
-                  {col.label}
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: col.label.includes('Amount') ? 'flex-end' : 'flex-start' }}>
+                    {col.label}
+                    {col.sortKey && (
+                      <span style={{ fontSize: '9px', color: 'var(--text-muted)', opacity: 0.7 }}>
+                        {sortConfig?.key === col.sortKey
+                          ? sortConfig.direction === 'asc' ? '\u25B2' : '\u25BC'
+                          : '\u21C5'}
+                      </span>
+                    )}
+                  </span>
                 </th>
               ))}
             </tr>
@@ -394,15 +526,14 @@ export default function TransactionsPage() {
           </thead>
 
           <tbody>
-            {filtered.map(t => {
+            {sortedTransactions.map(t => {
               const usdVal = getUSD(t, fxRate)
               const copVal = parseFloat(t.amount)
-              const isIncome = t.event_type === 'Income'
 
               return (
                 <tr
                   key={t.id}
-                  className="group transition-colors"
+                  className="group"
                   style={{ borderBottom: '1px solid var(--border)' }}
                   onMouseEnter={e => {
                     (e.currentTarget as HTMLElement).style.background = 'var(--bg-surface)'
@@ -412,76 +543,81 @@ export default function TransactionsPage() {
                   }}
                 >
                   {/* Date */}
-                  <td style={{ padding: '11px 10px 11px 32px', color: 'var(--text-muted)', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: '12px 12px 12px 32px', color: 'var(--text-primary)', fontSize: '12px', whiteSpace: 'nowrap' }}>
                     {formatDate(t.date)}
                   </td>
 
                   {/* Type badge */}
-                  <td style={{ padding: '11px 10px' }}>
+                  <td style={{ padding: '12px 12px' }}>
                     <span
-                      className="px-2 py-0.5 rounded-md text-xs font-medium whitespace-nowrap"
-                      style={EVENT_BADGE_STYLE[t.event_type] || EVENT_BADGE_STYLE['Transfer']}
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        whiteSpace: 'nowrap',
+                        ...(EVENT_BADGE_STYLE[t.event_type] || EVENT_BADGE_STYLE['Transfer']),
+                      }}
                     >
                       {t.event_type.replace(/_/g, ' ')}
                     </span>
                   </td>
 
                   {/* Category */}
-                  <td style={{ padding: '11px 10px', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                  <td style={{ padding: '12px 12px', color: 'var(--text-primary)', fontSize: '12px' }}>
                     {t.level_2}
                   </td>
 
                   {/* Subcategory */}
-                  <td style={{ padding: '11px 10px', color: 'var(--text-muted)', fontSize: '12px' }}>
+                  <td style={{ padding: '12px 12px', color: 'var(--text-primary)', fontSize: '12px' }}>
                     {t.level_3 || '\u2014'}
                   </td>
 
                   {/* From */}
-                  <td style={{ padding: '11px 10px', color: 'var(--text-muted)', fontSize: '11px' }}>
+                  <td style={{ padding: '12px 12px', color: 'var(--text-primary)', fontSize: '12px' }}>
                     {t.from_account || '\u2014'}
                   </td>
 
                   {/* To */}
-                  <td style={{ padding: '11px 10px', color: 'var(--text-muted)', fontSize: '11px' }}>
+                  <td style={{ padding: '12px 12px', color: 'var(--text-primary)', fontSize: '12px' }}>
                     {t.to_account || '\u2014'}
                   </td>
 
                   {/* Amount USD */}
-                  <td style={{ padding: '11px 10px', textAlign: 'right' }}>
-                    <span
-                      className="text-xs font-medium tabular-nums"
-                      style={{ color: isIncome ? 'var(--text-primary)' : 'var(--text-secondary)' }}
-                    >
-                      {formatUSD(usdVal)}
-                    </span>
+                  <td style={{ padding: '12px 12px', textAlign: 'right', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
+                    {formatUSD(usdVal)}
                   </td>
 
                   {/* Amount COP */}
-                  <td style={{ padding: '11px 10px', textAlign: 'right' }}>
-                    <span
-                      className="text-xs font-semibold tabular-nums"
-                      style={{ color: isIncome ? 'var(--text-primary)' : 'var(--text-secondary)' }}
-                    >
-                      {formatCOP(copVal)}
-                    </span>
+                  <td style={{ padding: '12px 12px', textAlign: 'right', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                    {formatCOP(copVal)}
                   </td>
 
                   {/* Notes */}
-                  <td style={{ padding: '11px 10px', color: 'var(--text-muted)', fontSize: '12px', maxWidth: '180px' }}>
-                    <span
-                      className="block truncate"
-                      title={t.notes || ''}
-                    >
+                  <td style={{ padding: '12px 12px', color: 'var(--text-primary)', fontSize: '12px', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span title={t.notes || ''}>
                       {t.notes || '\u2014'}
                     </span>
                   </td>
 
                   {/* Delete */}
-                  <td style={{ padding: '11px 8px', width: '40px' }}>
+                  <td style={{ padding: '12px 8px', width: '40px' }}>
                     <button
                       onClick={() => setDeleteId(t.id)}
-                      className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded transition-all"
-                      style={{ color: 'var(--text-muted)' }}
+                      className="opacity-0 group-hover:opacity-100"
+                      style={{
+                        width: '24px',
+                        height: '24px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: '4px',
+                        border: 'none',
+                        background: 'transparent',
+                        cursor: 'pointer',
+                        color: 'var(--text-muted)',
+                        transition: 'all 0.1s',
+                      }}
                       onMouseEnter={e => {
                         (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)'
                         ;(e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'

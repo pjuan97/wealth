@@ -419,7 +419,7 @@ export default function EquityForecastPage() {
       }}>
         <div style={{ marginBottom: '16px' }}>
           <h1 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)' }}>
-            Equity Forecast
+            Equity
           </h1>
           <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
             {tab === 'monthly' ? monthLabel : 'Full year 2026'} · Double-click to edit Rate, Start Balance (Jan), or Cierre Real

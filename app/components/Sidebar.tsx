@@ -48,20 +48,10 @@ const NAV_ITEMS = [
   },
   {
     href: '/equity-forecast',
-    label: 'Equity Forecast',
+    label: 'Equity',
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-      </svg>
-    ),
-  },
-  {
-    href: '/equity-executed',
-    label: 'Equity Executed',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10"/>
-        <path d="M12 6v6l4 2"/>
       </svg>
     ),
   },

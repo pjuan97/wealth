@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+const INVESTMENT_ACCOUNTS = [
+  'Bancolombia Fiduciary', 'Trii', 'Dollar App', 'Tyba', 'Interactive Brokers',
+]
+
 const ASSET_ACCOUNTS = [
   'Bancolombia (Cash)',
   'Bancolombia Fiduciary',
@@ -52,6 +56,23 @@ export async function GET() {
     // Current balances (all months)
     const currentBalances = await computeBalances()
 
+    // Get latest market_value_end for each investment account
+    const latestEquity = await prisma.equityExecuted.findMany({
+      where: {
+        platform: { in: INVESTMENT_ACCOUNTS },
+        market_value_end: { not: null },
+      },
+      orderBy: { month_label: 'desc' },
+    })
+
+    // Build map: account → latest market_value_end
+    const equityMap = new Map<string, number>()
+    for (const e of latestEquity) {
+      if (!equityMap.has(e.platform)) {
+        equityMap.set(e.platform, Number(e.market_value_end))
+      }
+    }
+
     // Build account list with classification
     const ALL_ACCOUNTS = [
       'Bancolombia (Cash)',
@@ -65,7 +86,10 @@ export async function GET() {
     ]
 
     const accounts = ALL_ACCOUNTS.map(name => {
-      const balance = currentBalances[name] || 0
+      const transactionBalance = currentBalances[name] || 0
+      const balance = INVESTMENT_ACCOUNTS.includes(name)
+        ? (equityMap.get(name) ?? transactionBalance)
+        : transactionBalance
       let type: 'asset' | 'liability' | 'neutral' = 'neutral'
       if (ASSET_ACCOUNTS.includes(name) && balance >= 0) type = 'asset'
       if (LIABILITY_ACCOUNTS.includes(name) && balance < 0) type = 'liability'

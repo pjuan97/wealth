@@ -11,10 +11,7 @@ interface EquityRow {
   annual_rate: number
   monthly_rate: number
   start_balance: number
-  planned_contribution: number
-  planned_withdrawal: number
   net_flow: number
-  projected_end: number
   expected_end: number
   market_value_end: number | null
   market_variance: number | null
@@ -23,7 +20,6 @@ interface EquityRow {
 
 interface PortfolioTotals {
   start_balance: number
-  projected_end: number
   expected_end: number
   market_value_end: number | null
   market_variance: number | null
@@ -164,6 +160,151 @@ function EditableMarketValue({
   )
 }
 
+// ─── Editable Annual Rate ─────────────────────────────────────────────────────
+function EditableRate({
+  value,
+  onSave,
+}: {
+  value: number
+  onSave: (v: number) => Promise<void>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [raw, setRaw] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    const num = parseFloat(raw.replace(/[^0-9.]/g, ''))
+    if (isNaN(num) || num <= 0 || num > 100) { setEditing(false); return }
+    setSaving(true)
+    await onSave(num / 100) // store as decimal
+    setSaving(false)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type="text"
+        value={raw}
+        onChange={e => setRaw(e.target.value)}
+        onBlur={handleSave}
+        onKeyDown={e => {
+          if (e.key === 'Enter') handleSave()
+          if (e.key === 'Escape') setEditing(false)
+        }}
+        placeholder="10.0"
+        style={{
+          width: '60px',
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-strong)',
+          borderRadius: '6px',
+          padding: '4px 8px',
+          color: 'var(--text-primary)',
+          fontSize: '11px',
+          outline: 'none',
+          textAlign: 'right',
+        }}
+      />
+    )
+  }
+
+  return (
+    <span
+      onDoubleClick={() => { setRaw((value * 100).toFixed(1)); setEditing(true) }}
+      title="Double-click to edit annual rate"
+      style={{
+        cursor: 'text',
+        fontSize: '11px',
+        color: 'var(--text-primary)',
+        borderBottom: '1px dashed var(--border-strong)',
+        paddingBottom: '1px',
+        opacity: saving ? 0.5 : 1,
+      }}
+    >
+      {(value * 100).toFixed(1)}%
+    </span>
+  )
+}
+
+// ─── Editable Start Balance ──────────────────────────────────────────────────
+function EditableStartBalance({
+  value,
+  editable,
+  onSave,
+}: {
+  value: number
+  editable: boolean
+  onSave: (v: number) => Promise<void>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [raw, setRaw] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  if (!editable) {
+    return (
+      <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+        {formatCOP(value)}
+      </span>
+    )
+  }
+
+  const handleSave = async () => {
+    const num = parseFloat(raw.replace(/[^0-9.]/g, ''))
+    if (isNaN(num)) { setEditing(false); return }
+    setSaving(true)
+    await onSave(num)
+    setSaving(false)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type="text"
+        value={raw}
+        onChange={e => setRaw(e.target.value)}
+        onBlur={handleSave}
+        onKeyDown={e => {
+          if (e.key === 'Enter') handleSave()
+          if (e.key === 'Escape') setEditing(false)
+        }}
+        style={{
+          width: '130px',
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-strong)',
+          borderRadius: '6px',
+          padding: '4px 8px',
+          color: 'var(--text-primary)',
+          fontSize: '12px',
+          fontVariantNumeric: 'tabular-nums',
+          outline: 'none',
+          textAlign: 'right',
+        }}
+      />
+    )
+  }
+
+  return (
+    <span
+      onDoubleClick={() => { setRaw(String(Math.round(value))); setEditing(true) }}
+      title="Double-click to edit start balance"
+      style={{
+        cursor: 'text',
+        fontSize: '12px',
+        color: 'var(--text-primary)',
+        fontVariantNumeric: 'tabular-nums',
+        borderBottom: '1px dashed var(--border-strong)',
+        paddingBottom: '1px',
+        opacity: saving ? 0.5 : 1,
+      }}
+    >
+      {formatCOP(value)}
+    </span>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function EquityForecastPage() {
   const [tab, setTab] = useState<'monthly' | 'annual'>('monthly')
@@ -220,6 +361,24 @@ export default function EquityForecastPage() {
     await loadMonthly(selectedMonth)
   }
 
+  const updateAnnualRate = async (forecast_id: number, value: number) => {
+    await fetch('/api/equity', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ forecast_id, annual_rate: value }),
+    })
+    await loadMonthly(selectedMonth)
+  }
+
+  const updateStartBalance = async (forecast_id: number, value: number) => {
+    await fetch('/api/equity', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ forecast_id, base_equity: value }),
+    })
+    await loadMonthly(selectedMonth)
+  }
+
   // ── Styles ─────────────────────────────────────────────────────────────────
   const thStyle = (align: 'left' | 'right' = 'right'): React.CSSProperties => ({
     padding: '10px 16px',
@@ -263,7 +422,7 @@ export default function EquityForecastPage() {
             Equity Forecast
           </h1>
           <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
-            {tab === 'monthly' ? monthLabel : 'Full year 2026'} · Double-click Cierre Real to enter closing balance
+            {tab === 'monthly' ? monthLabel : 'Full year 2026'} · Double-click to edit Rate, Start Balance (Jan), or Cierre Real
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0' }}>
@@ -316,12 +475,11 @@ export default function EquityForecastPage() {
               padding: '16px 32px',
               borderBottom: '1px solid var(--border)',
               display: 'grid',
-              gridTemplateColumns: 'repeat(5, 1fr)',
+              gridTemplateColumns: 'repeat(4, 1fr)',
               gap: '12px', flexShrink: 0,
             }}>
               {[
                 { label: 'Start Balance', value: formatCOP(totals.start_balance) },
-                { label: 'Projected End', value: formatCOP(totals.projected_end) },
                 { label: 'Expected End', value: formatCOP(totals.expected_end) },
                 { label: 'Market Value', value: totals.market_value_end !== null ? formatCOP(totals.market_value_end) : '—' },
                 { label: 'Market Variance', value: totals.market_variance !== null ? formatCOP(totals.market_variance) : '—' },
@@ -353,8 +511,8 @@ export default function EquityForecastPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
                 <thead>
                   <tr>
-                    <th style={{ ...thStyle('left'), paddingLeft: '32px', width: '200px' }}>Account</th>
-                    <th style={thStyle()}>Type</th>
+                    <th style={{ ...thStyle('left'), paddingLeft: '32px', width: '220px' }}>Account</th>
+                    <th style={thStyle()}>Annual Rate</th>
                     <th style={thStyle()}>Start Balance</th>
                     <th style={thStyle()}>Net Flow</th>
                     <th style={thStyle()}>Expected End</th>
@@ -384,27 +542,34 @@ export default function EquityForecastPage() {
                                 {row.account}
                               </p>
                               <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>
-                                {(row.annual_rate * 100).toFixed(0)}% annual · {(row.monthly_rate * 100).toFixed(2)}% monthly
+                                {row.equity_type}
                               </p>
                             </div>
                           </div>
                         </td>
 
-                        {/* Type */}
-                        <td style={{ ...tdStyle(), fontSize: '11px' }}>
-                          {row.equity_type}
-                        </td>
-
-                        {/* Start Balance */}
+                        {/* Annual Rate — editable */}
                         <td style={tdStyle()}>
-                          {formatCOP(row.start_balance)}
+                          <EditableRate
+                            value={row.annual_rate}
+                            onSave={v => updateAnnualRate(row.id, v)}
+                          />
                         </td>
 
-                        {/* Net Flow */}
+                        {/* Start Balance — editable only for Jan */}
+                        <td style={tdStyle()}>
+                          <EditableStartBalance
+                            value={row.start_balance}
+                            editable={selectedMonth === '2026-01'}
+                            onSave={v => updateStartBalance(row.id, v)}
+                          />
+                        </td>
+
+                        {/* Net Flow — read only, from transactions */}
                         <td style={tdStyle()}>
                           {row.net_flow !== 0
                             ? `${row.net_flow >= 0 ? '+' : ''}${formatCOP(row.net_flow)}`
-                            : '—'}
+                            : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                         </td>
 
                         {/* Expected End */}

@@ -164,7 +164,7 @@ function EditableAmount({
         cursor: 'text',
         fontVariantNumeric: 'tabular-nums',
         fontSize: '12px',
-        color: saving ? 'var(--text-muted)' : 'var(--text-primary)',
+        color: 'var(--text-primary)',
         borderBottom: '1px dashed var(--border-strong)',
         paddingBottom: '1px',
       }}
@@ -344,7 +344,7 @@ export default function PlanPage() {
                 borderBottom: tab === t
                   ? '2px solid var(--text-primary)'
                   : '2px solid transparent',
-                color: tab === t ? 'var(--text-primary)' : 'var(--text-muted)',
+                color: 'var(--text-primary)',
                 marginBottom: '-1px',
               }}
             >
@@ -383,7 +383,7 @@ export default function PlanPage() {
                     ? '1px solid var(--border-strong)'
                     : '1px solid transparent',
                   background: selectedMonth === m.key ? 'var(--bg-base)' : 'transparent',
-                  color: selectedMonth === m.key ? 'var(--text-primary)' : 'var(--text-muted)',
+                  color: 'var(--text-primary)',
                 }}
               >
                 {m.label}
@@ -413,10 +413,10 @@ export default function PlanPage() {
                   borderRadius: '10px',
                   padding: '12px 16px',
                 }}>
-                  <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                  <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
                     {card.label}
                   </p>
-                  <p style={{ fontSize: '16px', fontWeight: 700, color: card.muted ? 'var(--text-secondary)' : 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                  <p style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                     {formatCOP(card.value)}
                   </p>
                 </div>
@@ -428,7 +428,7 @@ export default function PlanPage() {
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {loadingMonthly ? (
               <div style={{ padding: '60px', textAlign: 'center' }}>
-                <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Loading…</p>
+                <p style={{ color: 'var(--text-primary)', fontSize: '13px' }}>Loading…</p>
               </div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
@@ -451,13 +451,13 @@ export default function PlanPage() {
                     <td style={{
                       padding: '10px 16px 10px 32px',
                       fontSize: '11px', fontWeight: 700,
-                      color: 'var(--text-secondary)',
+                      color: 'var(--text-primary)',
                       textTransform: 'uppercase', letterSpacing: '0.08em',
                       borderBottom: '1px solid var(--border)',
                     }}>
                       {expandedGroups.has('Income') ? '▾' : '▸'} Income
                     </td>
-                    <td style={{ ...tdStyle(), color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+                    <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
                       {formatCOP(incomeRows.reduce((s, r) => s + r.plan, 0))}
                     </td>
                     <td style={{ ...tdStyle(), fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
@@ -485,9 +485,9 @@ export default function PlanPage() {
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-surface)' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                     >
-                      <td style={{ ...tdStyle('left'), paddingLeft: '48px', color: 'var(--text-secondary)' }}>
+                      <td style={{ ...tdStyle('left'), paddingLeft: '48px', color: 'var(--text-primary)' }}>
                         {row.level_2}
-                        {row.level_3 && <span style={{ color: 'var(--text-muted)', marginLeft: '6px' }}>· {row.level_3}</span>}
+                        {row.level_3 && <span style={{ color: 'var(--text-primary)', marginLeft: '6px' }}>· {row.level_3}</span>}
                       </td>
                       <td style={tdStyle()}>
                         <EditableAmount value={row.plan} onSave={v => updatePlan(row.id, v)} />
@@ -515,14 +515,14 @@ export default function PlanPage() {
                     <td style={{
                       padding: '10px 16px 10px 32px',
                       fontSize: '11px', fontWeight: 700,
-                      color: 'var(--text-secondary)',
+                      color: 'var(--text-primary)',
                       textTransform: 'uppercase', letterSpacing: '0.08em',
                       borderBottom: '1px solid var(--border)',
                       borderTop: '2px solid var(--border-strong)',
                     }}>
                       {expandedGroups.has('Expenses') ? '▾' : '▸'} Expenses
                     </td>
-                    <td style={{ ...tdStyle(), color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
+                    <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontWeight: 700, fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
                       {totals ? formatCOP(totals.expense_plan) : '—'}
                     </td>
                     <td style={{ ...tdStyle(), fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
@@ -561,13 +561,13 @@ export default function PlanPage() {
                         <td style={{
                           padding: '10px 16px 10px 48px',
                           fontSize: '11px', fontWeight: 600,
-                          color: 'var(--text-secondary)',
+                          color: 'var(--text-primary)',
                           textTransform: 'uppercase', letterSpacing: '0.06em',
                           borderBottom: '1px solid var(--border)',
                         }}>
                           {isExpanded ? '▾' : '▸'} {l2}
                         </td>
-                        <td style={{ ...tdStyle(), color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                        <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
                           {formatCOP(groupPlan)}
                         </td>
                         <td style={{ ...tdStyle(), fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
@@ -591,7 +591,7 @@ export default function PlanPage() {
                           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-surface)' }}
                           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                         >
-                          <td style={{ ...tdStyle('left'), paddingLeft: '64px', color: 'var(--text-muted)' }}>
+                          <td style={{ ...tdStyle('left'), paddingLeft: '64px', color: 'var(--text-primary)' }}>
                             {row.level_3 || row.level_2}
                           </td>
                           <td style={tdStyle()}>
@@ -626,7 +626,7 @@ export default function PlanPage() {
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {loadingAnnual ? (
             <div style={{ padding: '60px', textAlign: 'center' }}>
-              <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Loading…</p>
+              <p style={{ color: 'var(--text-primary)', fontSize: '13px' }}>Loading…</p>
             </div>
           ) : (
             <div style={{ padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -642,7 +642,7 @@ export default function PlanPage() {
                   <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
                     Cashflow Summary
                   </p>
-                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  <p style={{ fontSize: '11px', color: 'var(--text-primary)', marginTop: '2px' }}>
                     Plan vs Executed by month · Double row: Plan / Executed
                   </p>
                 </div>
@@ -671,24 +671,24 @@ export default function PlanPage() {
                         return [
                           // Plan row
                           <tr key={`${label}_plan`} style={{ borderBottom: 'none' }}>
-                            <td style={{ padding: '8px 16px 2px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            <td style={{ padding: '8px 16px 2px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                               {label}
-                              <span style={{ marginLeft: '6px', fontSize: '9px', color: 'var(--text-muted)', fontWeight: 400 }}>plan</span>
+                              <span style={{ marginLeft: '6px', fontSize: '9px', color: 'var(--text-primary)', fontWeight: 400 }}>plan</span>
                             </td>
                             {annualSummary.map(row => (
-                              <td key={row.month} style={{ padding: '8px 16px 2px', fontSize: '11px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                              <td key={row.month} style={{ padding: '8px 16px 2px', fontSize: '11px', textAlign: 'right', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                                 {isRate
                                   ? formatAchievementPct(row[planKey] as number)
                                   : formatCOP(row[planKey] as number)}
                               </td>
                             ))}
-                            <td style={{ padding: '8px 16px 2px', fontSize: '11px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                            <td style={{ padding: '8px 16px 2px', fontSize: '11px', textAlign: 'right', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                               {isRate ? '—' : formatCOP(totalPlan)}
                             </td>
                           </tr>,
                           // Exec row
                           <tr key={`${label}_exec`} style={{ borderBottom: '1px solid var(--border)' }}>
-                            <td style={{ padding: '2px 16px 10px 20px', fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }} />
+                            <td style={{ padding: '2px 16px 10px 20px', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }} />
                             {annualSummary.map(row => {
                               const val = row[execKey] as number
                               const plan = row[planKey] as number
@@ -701,11 +701,7 @@ export default function PlanPage() {
                                   fontSize: '13px',
                                   fontWeight: 700,
                                   textAlign: 'right',
-                                  color: val === 0
-                                    ? 'var(--text-muted)'
-                                    : isGood
-                                      ? 'var(--text-primary)'
-                                      : 'var(--text-secondary)',
+                                  color: 'var(--text-primary)',
                                   fontVariantNumeric: 'tabular-nums',
                                 }}>
                                   {isRate
@@ -755,7 +751,7 @@ export default function PlanPage() {
                           cursor: 'pointer',
                           border: annualFilter === f ? '1px solid var(--border-strong)' : '1px solid transparent',
                           background: annualFilter === f ? 'var(--bg-elevated)' : 'transparent',
-                          color: annualFilter === f ? 'var(--text-primary)' : 'var(--text-muted)',
+                          color: 'var(--text-primary)',
                         }}
                       >
                         {f === 'all' ? 'All' : f}
@@ -781,26 +777,26 @@ export default function PlanPage() {
                           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-elevated)' }}
                           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                         >
-                          <td style={{ padding: '10px 16px 10px 20px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginRight: '6px', textTransform: 'uppercase' }}>
+                          <td style={{ padding: '10px 16px 10px 20px', fontSize: '12px', color: 'var(--text-primary)' }}>
+                            <span style={{ fontSize: '10px', color: 'var(--text-primary)', marginRight: '6px', textTransform: 'uppercase' }}>
                               {cat.eventType === 'Income' ? '↑' : '↓'}
                             </span>
                             {cat.level_2}
                             {cat.level_3 && (
-                              <span style={{ color: 'var(--text-muted)', marginLeft: '4px' }}>· {cat.level_3}</span>
+                              <span style={{ color: 'var(--text-primary)', marginLeft: '4px' }}>· {cat.level_3}</span>
                             )}
                           </td>
                           {cat.months.map(m => (
                             <td key={m.month} style={{ padding: '10px 16px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                               {m.exec === 0 && m.plan === 0 ? (
-                                <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>—</span>
+                                <span style={{ color: 'var(--text-primary)', fontSize: '11px' }}>—</span>
                               ) : (
                                 <div>
                                   <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
                                     {formatCOP(m.exec)}
                                   </div>
                                   {m.plan > 0 && (
-                                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>
+                                    <div style={{ fontSize: '10px', color: 'var(--text-primary)', marginTop: '1px' }}>
                                       {formatAchievementPct(m.achievement)}
                                     </div>
                                   )}

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import ThemeToggle from './ThemeToggle'
 
 const NAV_ITEMS = [
   {
@@ -140,12 +141,18 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div
-        className="px-6 py-4"
-        style={{ borderTop: '1px solid var(--border)' }}
+        style={{
+          padding: '12px 16px',
+          borderTop: '1px solid var(--border)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
       >
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
           Wealth v0.1
-        </p>
+        </span>
+        <ThemeToggle />
       </div>
     </aside>
   )

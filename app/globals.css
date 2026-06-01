@@ -16,6 +16,21 @@
   --accent-hover: #e2e8f0;
 }
 
+[data-theme="light"] {
+  --bg-base: #ffffff;
+  --bg-surface: #f8fafc;
+  --bg-elevated: #f1f5f9;
+  --bg-hover: #e2e8f0;
+  --border: rgba(15, 23, 42, 0.1);
+  --border-strong: rgba(15, 23, 42, 0.2);
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-inverse: #ffffff;
+  --accent: #0f172a;
+  --accent-hover: #1e293b;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;

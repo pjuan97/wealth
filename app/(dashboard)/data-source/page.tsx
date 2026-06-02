@@ -623,8 +623,8 @@ export default function DataSourcePage() {
                             }}
                           />
                         ) : (
-                          <span style={{ fontWeight: 500, fontFamily: 'monospace', fontSize: '13px' }}>
-                            {et.name}
+                          <span style={{ fontWeight: 500, fontSize: '13px' }}>
+                            {et.name.replace(/_/g, ' ')}
                           </span>
                         )}
                       </td>

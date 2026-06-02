@@ -65,6 +65,11 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
+  {
+    href: '/data-source',
+    label: 'Data Source',
+    icon: <span style={{ fontSize: '14px' }}>⚙️</span>,
+  },
 ]
 
 export default function Sidebar() {

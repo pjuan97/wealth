@@ -111,3 +111,34 @@ model DailyFxRate {
   @@unique([date, currency])
   @@index([date])
 }
+
+model AccountDef {
+  id         Int      @id @default(autoincrement())
+  name       String   @unique @db.VarChar(100)
+  type       String   @db.VarChar(20)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model CategoryDef {
+  id         Int      @id @default(autoincrement())
+  level_1    String   @db.VarChar(50)
+  level_2    String   @db.VarChar(100)
+  level_3    String?  @db.VarChar(100)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([level_1, level_2, level_3])
+  @@index([level_1])
+  @@index([level_2])
+}
+
+model EventTypeDef {
+  id         Int      @id @default(autoincrement())
+  name       String   @unique @db.VarChar(50)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}

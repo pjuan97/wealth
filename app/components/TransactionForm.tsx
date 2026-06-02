@@ -1,11 +1,18 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ACCOUNTS, EVENT_TYPES, LEVEL_2_BY_LEVEL_1, LEVEL_3_BY_LEVEL_2 } from '@/lib/constants'
 
 interface FxRate {
   month_label: string
   rate_to_cop: number
+}
+
+interface CategoryDef {
+  id: number
+  level_1: string
+  level_2: string
+  level_3: string | null
+  is_active: boolean
 }
 
 interface TransactionFormProps {
@@ -76,6 +83,25 @@ export default function TransactionForm({
 }: TransactionFormProps) {
   const [loading, setLoading] = useState(false)
   const [fxRates, setFxRates] = useState<FxRate[]>([])
+  const [accountOptions, setAccountOptions] = useState<string[]>([])
+  const [eventTypeOptions, setEventTypeOptions] = useState<string[]>([])
+  const [categoryDefs, setCategoryDefs] = useState<CategoryDef[]>([])
+
+  // Derive lookup maps from categoryDefs
+  const level2ByLevel1: Record<string, string[]> = {}
+  const level3ByLevel2: Record<string, string[]> = {}
+  for (const c of categoryDefs.filter(c => c.is_active)) {
+    if (!level2ByLevel1[c.level_1]) level2ByLevel1[c.level_1] = []
+    if (!level2ByLevel1[c.level_1].includes(c.level_2)) {
+      level2ByLevel1[c.level_1].push(c.level_2)
+    }
+    if (c.level_3) {
+      if (!level3ByLevel2[c.level_2]) level3ByLevel2[c.level_2] = []
+      if (!level3ByLevel2[c.level_2].includes(c.level_3)) {
+        level3ByLevel2[c.level_2].push(c.level_3)
+      }
+    }
+  }
 
   const defaultForm = () => ({
     date: '',
@@ -98,6 +124,14 @@ export default function TransactionForm({
     fetch('/api/fx-rates')
       .then(r => r.json())
       .then(setFxRates)
+      .catch(console.error)
+    fetch('/api/data-source')
+      .then(r => r.json())
+      .then((data: { accounts: { name: string; is_active: boolean }[]; categories: CategoryDef[]; eventTypes: { name: string; is_active: boolean }[] }) => {
+        setAccountOptions(data.accounts.filter(a => a.is_active).map(a => a.name))
+        setCategoryDefs(data.categories)
+        setEventTypeOptions(data.eventTypes.filter(e => e.is_active).map(e => e.name))
+      })
       .catch(console.error)
   }, [])
 
@@ -127,17 +161,19 @@ export default function TransactionForm({
   // Cascade event_type -> level_1 -> level_2 -> level_3
   useEffect(() => {
     const l1 = EVENT_TYPE_TO_LEVEL1[form.event_type] || 'Expense'
-    const l2options = LEVEL_2_BY_LEVEL_1[l1] || []
+    const l2options = level2ByLevel1[l1] || []
     const l2 = l2options[0] || ''
-    const l3options = LEVEL_3_BY_LEVEL_2[l2] || []
+    const l3options = level3ByLevel2[l2] || []
     const l3 = l3options[0] || ''
     setForm(f => ({ ...f, level_1: l1, level_2: l2, level_3: l3 }))
-  }, [form.event_type])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.event_type, categoryDefs])
 
   useEffect(() => {
-    const l3options = LEVEL_3_BY_LEVEL_2[form.level_2] || []
+    const l3options = level3ByLevel2[form.level_2] || []
     setForm(f => ({ ...f, level_3: l3options[0] || '' }))
-  }, [form.level_2])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.level_2, categoryDefs])
 
   const rules = EVENT_TYPE_RULES[form.event_type] || { from: true, to: false }
 
@@ -239,7 +275,7 @@ export default function TransactionForm({
                 onChange={e => setForm(f => ({ ...f, event_type: e.target.value }))}
                 style={{ ...inputStyle, cursor: 'pointer' }}
               >
-                {EVENT_TYPES.map(et => (
+                {eventTypeOptions.map(et => (
                   <option
                     key={et}
                     value={et}
@@ -269,7 +305,7 @@ export default function TransactionForm({
                   onChange={e => setForm(f => ({ ...f, level_2: e.target.value }))}
                   style={{ ...inputStyle, cursor: 'pointer' }}
                 >
-                  {(LEVEL_2_BY_LEVEL_1[form.level_1] || []).map(l2 => (
+                  {(level2ByLevel1[form.level_1] || []).map(l2 => (
                     <option key={l2} value={l2} style={{ background: 'var(--bg-surface)' }}>
                       {l2}
                     </option>
@@ -279,7 +315,7 @@ export default function TransactionForm({
             </div>
 
             {/* Level 3 */}
-            {(LEVEL_3_BY_LEVEL_2[form.level_2] || []).length > 0 && (
+            {(level3ByLevel2[form.level_2] || []).length > 0 && (
               <div>
                 <label style={labelStyle}>Level 3</label>
                 <select
@@ -288,7 +324,7 @@ export default function TransactionForm({
                   style={{ ...inputStyle, cursor: 'pointer' }}
                 >
                   <option value="" style={{ background: 'var(--bg-surface)' }}>&mdash; none &mdash;</option>
-                  {(LEVEL_3_BY_LEVEL_2[form.level_2] || []).map(l3 => (
+                  {(level3ByLevel2[form.level_2] || []).map(l3 => (
                     <option key={l3} value={l3} style={{ background: 'var(--bg-surface)' }}>
                       {l3}
                     </option>
@@ -362,7 +398,7 @@ export default function TransactionForm({
                   }
                 >
                   <option value="" style={{ background: 'var(--bg-surface)' }}>&mdash; none &mdash;</option>
-                  {ACCOUNTS.map(a => (
+                  {accountOptions.map(a => (
                     <option key={a} value={a} style={{ background: 'var(--bg-surface)' }}>{a}</option>
                   ))}
                 </select>
@@ -381,7 +417,7 @@ export default function TransactionForm({
                   }
                 >
                   <option value="" style={{ background: 'var(--bg-surface)' }}>&mdash; none &mdash;</option>
-                  {ACCOUNTS.map(a => (
+                  {accountOptions.map(a => (
                     <option key={a} value={a} style={{ background: 'var(--bg-surface)' }}>{a}</option>
                   ))}
                 </select>

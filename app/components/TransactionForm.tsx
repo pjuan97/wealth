@@ -15,6 +15,12 @@ interface CategoryDef {
   is_active: boolean
 }
 
+interface AccountDef {
+  name: string
+  type: string
+  is_active: boolean
+}
+
 interface TransactionFormProps {
   open: boolean
   onClose: () => void
@@ -22,14 +28,67 @@ interface TransactionFormProps {
   selectedMonth: string
 }
 
-const EVENT_TYPE_RULES: Record<string, { from: boolean; to: boolean }> = {
-  Opening_Balance: { from: false, to: true },
-  Income:          { from: false, to: true },
-  Expense:         { from: true,  to: false },
-  Transfer:        { from: true,  to: true },
-  Investment:      { from: true,  to: true },
-  Withdrawal:      { from: true,  to: true },
-  Debt_Payment:    { from: true,  to: true },
+// ─── Dynamic rules per event type ─────────────────────────────────────────────
+type FieldVisibility = 'required' | 'optional' | 'hidden'
+
+interface EventTypeRules {
+  fromAccount: FieldVisibility
+  toAccount: FieldVisibility
+  fromAccountFilter?: 'all' | 'investment' | 'debt' | 'cash'
+  toAccountFilter?: 'all' | 'investment' | 'debt' | 'cash'
+  level1Filter?: string
+  autoLevel2?: string
+}
+
+const EVENT_TYPE_RULES: Record<string, EventTypeRules> = {
+  Income: {
+    fromAccount: 'hidden',
+    toAccount: 'required',
+    level1Filter: 'Income',
+  },
+  Expense: {
+    fromAccount: 'required',
+    toAccount: 'hidden',
+    level1Filter: 'Expense',
+  },
+  Transfer: {
+    fromAccount: 'required',
+    toAccount: 'required',
+    autoLevel2: 'Financial Movement',
+  },
+  Investment: {
+    fromAccount: 'required',
+    toAccount: 'required',
+    fromAccountFilter: 'cash',
+    toAccountFilter: 'investment',
+    level1Filter: 'Equity',
+  },
+  Withdrawal: {
+    fromAccount: 'required',
+    toAccount: 'required',
+    fromAccountFilter: 'investment',
+    toAccountFilter: 'cash',
+    level1Filter: 'Equity',
+  },
+  Debt_Payment: {
+    fromAccount: 'required',
+    toAccount: 'required',
+    fromAccountFilter: 'cash',
+    toAccountFilter: 'debt',
+    autoLevel2: 'Credit Cards',
+  },
+  Debt_Increase: {
+    fromAccount: 'required',
+    toAccount: 'required',
+    fromAccountFilter: 'debt',
+    toAccountFilter: 'cash',
+    autoLevel2: 'Credit Cards',
+  },
+  Opening_Balance: {
+    fromAccount: 'hidden',
+    toAccount: 'required',
+    level1Filter: 'Equity',
+  },
 }
 
 const EVENT_TYPE_TO_LEVEL1: Record<string, string> = {
@@ -40,6 +99,7 @@ const EVENT_TYPE_TO_LEVEL1: Record<string, string> = {
   Investment: 'Equity',
   Withdrawal: 'Financial Movement',
   Debt_Payment: 'Debt',
+  Debt_Increase: 'Debt',
 }
 
 function deriveMonthLabel(dateStr: string): string {
@@ -62,7 +122,7 @@ const inputStyle = {
 }
 
 const labelStyle = {
-  display: 'block',
+  display: 'block' as const,
   color: 'var(--text-muted)',
   fontSize: '11px',
   fontWeight: '500',
@@ -82,10 +142,16 @@ export default function TransactionForm({
   open, onClose, onSuccess, selectedMonth
 }: TransactionFormProps) {
   const [loading, setLoading] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
   const [fxRates, setFxRates] = useState<FxRate[]>([])
-  const [accountOptions, setAccountOptions] = useState<string[]>([])
   const [eventTypeOptions, setEventTypeOptions] = useState<string[]>([])
   const [categoryDefs, setCategoryDefs] = useState<CategoryDef[]>([])
+  const [accountsByType, setAccountsByType] = useState<{
+    all: string[]
+    cash: string[]
+    investment: string[]
+    debt: string[]
+  }>({ all: [], cash: [], investment: [], debt: [] })
 
   // Derive lookup maps from categoryDefs
   const level2ByLevel1: Record<string, string[]> = {}
@@ -120,6 +186,12 @@ export default function TransactionForm({
 
   const [form, setForm] = useState(defaultForm())
 
+  // Helper to update form and clear errors
+  const updateForm = (updater: (f: typeof form) => typeof form) => {
+    setFormError(null)
+    setForm(updater)
+  }
+
   useEffect(() => {
     fetch('/api/fx-rates')
       .then(r => r.json())
@@ -127,8 +199,14 @@ export default function TransactionForm({
       .catch(console.error)
     fetch('/api/data-source')
       .then(r => r.json())
-      .then((data: { accounts: { name: string; is_active: boolean }[]; categories: CategoryDef[]; eventTypes: { name: string; is_active: boolean }[] }) => {
-        setAccountOptions(data.accounts.filter(a => a.is_active).map(a => a.name))
+      .then((data: { accounts: AccountDef[]; categories: CategoryDef[]; eventTypes: { name: string; is_active: boolean }[] }) => {
+        const activeAccounts = data.accounts.filter(a => a.is_active)
+        setAccountsByType({
+          all: activeAccounts.map(a => a.name),
+          cash: activeAccounts.filter(a => a.type === 'cash').map(a => a.name),
+          investment: activeAccounts.filter(a => a.type === 'investment').map(a => a.name),
+          debt: activeAccounts.filter(a => a.type === 'debt').map(a => a.name),
+        })
         setCategoryDefs(data.categories)
         setEventTypeOptions(data.eventTypes.filter(e => e.is_active).map(e => e.name))
       })
@@ -161,8 +239,9 @@ export default function TransactionForm({
   // Cascade event_type -> level_1 -> level_2 -> level_3
   useEffect(() => {
     const l1 = EVENT_TYPE_TO_LEVEL1[form.event_type] || 'Expense'
+    const rules = EVENT_TYPE_RULES[form.event_type]
     const l2options = level2ByLevel1[l1] || []
-    const l2 = l2options[0] || ''
+    const l2 = rules?.autoLevel2 || l2options[0] || ''
     const l3options = level3ByLevel2[l2] || []
     const l3 = l3options[0] || ''
     setForm(f => ({ ...f, level_1: l1, level_2: l2, level_3: l3 }))
@@ -175,10 +254,56 @@ export default function TransactionForm({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.level_2, categoryDefs])
 
-  const rules = EVENT_TYPE_RULES[form.event_type] || { from: true, to: false }
+  // ─── Computed rules ───────────────────────────────────────────────────────
+  const currentRules = EVENT_TYPE_RULES[form.event_type] || {
+    fromAccount: 'optional' as FieldVisibility,
+    toAccount: 'optional' as FieldVisibility,
+  }
+
+  const fromAccountOptions = currentRules.fromAccountFilter
+    ? accountsByType[currentRules.fromAccountFilter]
+    : accountsByType.all
+
+  const toAccountOptions = currentRules.toAccountFilter
+    ? accountsByType[currentRules.toAccountFilter]
+    : accountsByType.all
+
+  // ─── Event type change handler ────────────────────────────────────────────
+  const handleEventTypeChange = (newEventType: string) => {
+    const rules = EVENT_TYPE_RULES[newEventType] || {}
+    setFormError(null)
+    setForm(prev => ({
+      ...prev,
+      event_type: newEventType,
+      from_account: rules.fromAccount === 'hidden' ? '' : prev.from_account,
+      to_account: rules.toAccount === 'hidden' ? '' : prev.to_account,
+    }))
+  }
+
+  // ─── Validation ───────────────────────────────────────────────────────────
+  const validateForm = (): string | null => {
+    if (!form.event_type) return 'Event type is required'
+    if (!form.date) return 'Date is required'
+    if (!form.amount && !form.usd_amount) return 'Amount is required'
+
+    const rules = EVENT_TYPE_RULES[form.event_type]
+    if (rules) {
+      if (rules.fromAccount === 'required' && !form.from_account) {
+        return `FROM account is required for ${form.event_type.replace(/_/g, ' ')}`
+      }
+      if (rules.toAccount === 'required' && !form.to_account) {
+        return `TO account is required for ${form.event_type.replace(/_/g, ' ')}`
+      }
+    }
+    return null
+  }
 
   const handleSubmit = async () => {
-    if (!form.date || !form.amount) return
+    const error = validateForm()
+    if (error) {
+      setFormError(error)
+      return
+    }
     setLoading(true)
     try {
       const res = await fetch('/api/transactions', {
@@ -190,6 +315,7 @@ export default function TransactionForm({
       onSuccess()
       onClose()
       setForm(defaultForm())
+      setFormError(null)
     } catch (e) {
       console.error(e)
     } finally {
@@ -257,7 +383,7 @@ export default function TransactionForm({
               <input
                 type="date"
                 value={form.date}
-                onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                onChange={e => updateForm(f => ({ ...f, date: e.target.value }))}
                 style={inputStyle}
               />
               {form.month_label && (
@@ -272,7 +398,7 @@ export default function TransactionForm({
               <label style={labelStyle}>Event Type *</label>
               <select
                 value={form.event_type}
-                onChange={e => setForm(f => ({ ...f, event_type: e.target.value }))}
+                onChange={e => handleEventTypeChange(e.target.value)}
                 style={{ ...inputStyle, cursor: 'pointer' }}
               >
                 {eventTypeOptions.map(et => (
@@ -302,7 +428,7 @@ export default function TransactionForm({
                 <label style={labelStyle}>Level 2 *</label>
                 <select
                   value={form.level_2}
-                  onChange={e => setForm(f => ({ ...f, level_2: e.target.value }))}
+                  onChange={e => updateForm(f => ({ ...f, level_2: e.target.value }))}
                   style={{ ...inputStyle, cursor: 'pointer' }}
                 >
                   {(level2ByLevel1[form.level_1] || []).map(l2 => (
@@ -320,7 +446,7 @@ export default function TransactionForm({
                 <label style={labelStyle}>Level 3</label>
                 <select
                   value={form.level_3}
-                  onChange={e => setForm(f => ({ ...f, level_3: e.target.value }))}
+                  onChange={e => updateForm(f => ({ ...f, level_3: e.target.value }))}
                   style={{ ...inputStyle, cursor: 'pointer' }}
                 >
                   <option value="" style={{ background: 'var(--bg-surface)' }}>&mdash; none &mdash;</option>
@@ -344,7 +470,7 @@ export default function TransactionForm({
                   type="number"
                   step="0.01"
                   value={form.usd_amount}
-                  onChange={e => setForm(f => ({ ...f, usd_amount: e.target.value }))}
+                  onChange={e => updateForm(f => ({ ...f, usd_amount: e.target.value }))}
                   placeholder="optional"
                   style={inputStyle}
                 />
@@ -355,7 +481,7 @@ export default function TransactionForm({
                   type="number"
                   step="0.01"
                   value={form.fx_rate}
-                  onChange={e => setForm(f => ({ ...f, fx_rate: e.target.value }))}
+                  onChange={e => updateForm(f => ({ ...f, fx_rate: e.target.value }))}
                   placeholder="auto"
                   style={inputStyle}
                 />
@@ -368,7 +494,7 @@ export default function TransactionForm({
                 type="number"
                 step="1"
                 value={form.amount}
-                onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+                onChange={e => updateForm(f => ({ ...f, amount: e.target.value }))}
                 placeholder="0"
                 style={{
                   ...inputStyle,
@@ -382,46 +508,42 @@ export default function TransactionForm({
             {/* Divider */}
             <div style={{ borderTop: '1px solid var(--border)' }} />
 
-            {/* Accounts */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                <label style={labelStyle}>
-                  From {rules.from ? '*' : ''}
-                </label>
-                <select
-                  value={form.from_account}
-                  onChange={e => setForm(f => ({ ...f, from_account: e.target.value }))}
-                  disabled={!rules.from}
-                  style={rules.from
-                    ? { ...inputStyle, cursor: 'pointer' }
-                    : disabledInputStyle
-                  }
-                >
-                  <option value="" style={{ background: 'var(--bg-surface)' }}>&mdash; none &mdash;</option>
-                  {accountOptions.map(a => (
-                    <option key={a} value={a} style={{ background: 'var(--bg-surface)' }}>{a}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>
-                  To {rules.to ? '*' : ''}
-                </label>
-                <select
-                  value={form.to_account}
-                  onChange={e => setForm(f => ({ ...f, to_account: e.target.value }))}
-                  disabled={!rules.to}
-                  style={rules.to
-                    ? { ...inputStyle, cursor: 'pointer' }
-                    : disabledInputStyle
-                  }
-                >
-                  <option value="" style={{ background: 'var(--bg-surface)' }}>&mdash; none &mdash;</option>
-                  {accountOptions.map(a => (
-                    <option key={a} value={a} style={{ background: 'var(--bg-surface)' }}>{a}</option>
-                  ))}
-                </select>
-              </div>
+            {/* Accounts — dynamic visibility */}
+            <div style={{ display: 'grid', gridTemplateColumns: currentRules.fromAccount !== 'hidden' && currentRules.toAccount !== 'hidden' ? '1fr 1fr' : '1fr', gap: '12px' }}>
+              {currentRules.fromAccount !== 'hidden' && (
+                <div>
+                  <label style={labelStyle}>
+                    From {currentRules.fromAccount === 'required' && <span style={{ color: 'var(--accent)' }}>*</span>}
+                  </label>
+                  <select
+                    value={form.from_account}
+                    onChange={e => updateForm(f => ({ ...f, from_account: e.target.value }))}
+                    style={{ ...inputStyle, cursor: 'pointer' }}
+                  >
+                    <option value="" style={{ background: 'var(--bg-surface)' }}>&mdash; none &mdash;</option>
+                    {fromAccountOptions.map(a => (
+                      <option key={a} value={a} style={{ background: 'var(--bg-surface)' }}>{a}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {currentRules.toAccount !== 'hidden' && (
+                <div>
+                  <label style={labelStyle}>
+                    To {currentRules.toAccount === 'required' && <span style={{ color: 'var(--accent)' }}>*</span>}
+                  </label>
+                  <select
+                    value={form.to_account}
+                    onChange={e => updateForm(f => ({ ...f, to_account: e.target.value }))}
+                    style={{ ...inputStyle, cursor: 'pointer' }}
+                  >
+                    <option value="" style={{ background: 'var(--bg-surface)' }}>&mdash; none &mdash;</option>
+                    {toAccountOptions.map(a => (
+                      <option key={a} value={a} style={{ background: 'var(--bg-surface)' }}>{a}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             {/* Notes */}
@@ -430,7 +552,7 @@ export default function TransactionForm({
               <input
                 type="text"
                 value={form.notes}
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                onChange={e => updateForm(f => ({ ...f, notes: e.target.value }))}
                 placeholder="Optional description"
                 style={inputStyle}
               />
@@ -440,36 +562,46 @@ export default function TransactionForm({
 
         {/* Footer */}
         <div
-          className="px-6 py-4 flex gap-3 shrink-0"
+          className="px-6 py-4 flex flex-col gap-3 shrink-0"
           style={{ borderTop: '1px solid var(--border)' }}
         >
-          <button
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors"
-            style={{
-              border: '1px solid var(--border-strong)',
-              color: 'var(--text-secondary)',
-              background: 'transparent',
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading || !form.date || !form.amount}
-            className="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-colors"
-            style={{
-              background: loading || !form.date || !form.amount
-                ? 'var(--bg-elevated)'
-                : 'var(--text-primary)',
-              color: loading || !form.date || !form.amount
-                ? 'var(--text-muted)'
-                : 'var(--text-inverse)',
-              cursor: loading || !form.date || !form.amount ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {loading ? 'Saving\u2026' : 'Save Transaction'}
-          </button>
+          {formError && (
+            <div style={{
+              padding: '8px 12px',
+              background: 'var(--accent-subtle)',
+              border: '1px solid var(--accent-border)',
+              borderRadius: '6px',
+              fontSize: '12px',
+              color: 'var(--accent)',
+            }}>
+              {formError}
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors"
+              style={{
+                border: '1px solid var(--border-strong)',
+                color: 'var(--text-secondary)',
+                background: 'transparent',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={loading}
+              className="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+              style={{
+                background: loading ? 'var(--bg-elevated)' : 'var(--text-primary)',
+                color: loading ? 'var(--text-muted)' : 'var(--text-inverse)',
+                cursor: loading ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {loading ? 'Saving\u2026' : 'Save Transaction'}
+            </button>
+          </div>
         </div>
       </div>
     </>

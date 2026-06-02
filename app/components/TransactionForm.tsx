@@ -123,7 +123,7 @@ export default function TransactionForm({
   useEffect(() => {
     fetch('/api/fx-rates')
       .then(r => r.json())
-      .then(setFxRates)
+      .then(data => setFxRates(data.monthly || []))
       .catch(console.error)
     fetch('/api/data-source')
       .then(r => r.json())

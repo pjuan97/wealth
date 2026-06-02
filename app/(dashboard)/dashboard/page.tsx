@@ -30,6 +30,10 @@ interface MonthlyRow {
   plan: number; executed: number; diff: number
   variance: number | null; achievement: number | null
 }
+interface ExpenseByCat {
+  month: string; label: string
+  life: number; health: number; travels: number; others: number
+}
 interface EquityMonthData {
   month: string; label: string
   planned: number; executed: number | null; marketPnL: number | null
@@ -204,6 +208,7 @@ function OverviewTab() {
   const [data, setData] = useState<{
     monthlySummary: MonthlySummary[]
     incomeBySource: IncomeSource[]
+    expenseByCategory: ExpenseByCat[]
     ytd: { income: number; expense: number; balance: number; savingsRate: number; months: number }
     netWorth: number; cashBalance: number; totalEquity: number
   } | null>(null)
@@ -295,6 +300,53 @@ function OverviewTab() {
                 { value: m.label },
                 { value: fM(src?.salary || 0) },
                 { value: fM(src?.other || 0), color: 'var(--text-secondary)' },
+              ]
+            })}
+          />
+        </Card>
+      </div>
+
+      {/* Expense by Category — line chart + table */}
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
+        <Card title="Expense by Category" subtitle="Life / Health / Travels / Others — monthly trend">
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart
+              data={withData.map(m => {
+                const exp = data.expenseByCategory?.find((e: ExpenseByCat) => e.month === m.month)
+                return {
+                  label: m.label,
+                  Life: exp?.life || 0,
+                  Health: exp?.health || 0,
+                  Travels: exp?.travels || 0,
+                  Others: exp?.others || 0,
+                }
+              })}
+              margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
+            >
+              <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.1)" vertical={false} />
+              <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tickFormatter={fM} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend wrapperStyle={{ fontSize: '11px' }} />
+              <Line type="monotone" dataKey="Life" stroke="#f97316" strokeWidth={2} dot={{ r: 3, fill: '#f97316' }} />
+              <Line type="monotone" dataKey="Health" stroke="#94a3b8" strokeWidth={2} dot={{ r: 3, fill: '#94a3b8' }} />
+              <Line type="monotone" dataKey="Travels" stroke="#64748b" strokeWidth={2} dot={{ r: 3, fill: '#64748b' }} />
+              <Line type="monotone" dataKey="Others" stroke="#cbd5e1" strokeWidth={2} dot={{ r: 3, fill: '#cbd5e1' }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+
+        <Card title="Expense by Category YTD">
+          <MiniTable
+            headers={['Month', 'Life', 'Health', 'Travels', 'Others']}
+            rows={withData.map(m => {
+              const exp = data.expenseByCategory?.find((e: ExpenseByCat) => e.month === m.month)
+              return [
+                { value: m.label },
+                { value: fM(exp?.life || 0), color: '#f97316' },
+                { value: fM(exp?.health || 0), color: '#94a3b8' },
+                { value: fM(exp?.travels || 0), color: '#64748b' },
+                { value: fM(exp?.others || 0) },
               ]
             })}
           />
@@ -514,58 +566,62 @@ function MonthlyDetailTab() {
             <KpiCard label="Balance" value={fCOP(data.kpis.balance)} accent={data.kpis.balance >= 0} />
           </div>
 
-          {/* Expense drilldown + pie */}
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
+          {/* Expense drilldown — full width layout */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignItems: 'start' }}>
+
+            {/* Table — full height, no internal scroll */}
             <Card title={`Expenses — ${MONTH_LABELS[selectedMonth]}`} subtitle="Plan vs Executed by subcategory">
-              <div style={{ overflowY: 'auto', maxHeight: '320px' }}>
-                <MiniTable
-                  headers={['Category', 'Plan', 'Executed', 'Diff', 'Var%']}
-                  rows={expenseRows.map(r => [
-                    { value: r.level_3 || r.level_2 },
-                    { value: fM(r.plan), color: 'var(--text-secondary)' },
-                    { value: fM(r.executed), bold: r.executed > 0 },
-                    { value: r.diff !== 0 ? `${r.diff >= 0 ? '+' : ''}${fM(r.diff)}` : '—', color: r.diff <= 0 ? 'var(--accent)' : 'var(--text-secondary)' },
-                    { value: fPct(r.variance), color: varianceColor(r.variance, 'expense') },
-                  ])}
-                />
-              </div>
+              <MiniTable
+                headers={['Category', 'Plan', 'Executed', 'Diff', 'Var%']}
+                rows={expenseRows.map(r => [
+                  { value: r.level_3 || r.level_2 },
+                  { value: fM(r.plan), color: 'var(--text-secondary)' },
+                  { value: fM(r.executed), bold: r.executed > 0 },
+                  {
+                    value: r.diff !== 0 ? `${r.diff >= 0 ? '+' : ''}${fM(r.diff)}` : '—',
+                    color: r.diff <= 0 ? 'var(--accent)' : 'var(--text-secondary)',
+                  },
+                  { value: fPct(r.variance), color: varianceColor(r.variance, 'expense') },
+                ])}
+              />
             </Card>
 
-            <Card title="Expense Distribution">
-              {data.expensePie.length > 0 ? (
-                <>
-                  <ResponsiveContainer width="100%" height={160}>
-                    <PieChart>
-                      <Pie
-                        data={data.expensePie}
-                        cx="50%" cy="50%"
-                        innerRadius={40} outerRadius={65}
-                        dataKey="value"
-                      >
-                        {data.expensePie.map((_, i) => (
-                          <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(v) => fM(Number(v))} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '8px' }}>
-                    {data.expensePie.map((e, i) => (
-                      <div key={e.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
-                        <span style={{ color: PIE_COLORS[i] }}>● {e.name}</span>
-                        <span style={{ color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                          {fM(e.value)} ({totalExpense > 0 ? ((e.value / totalExpense) * 100).toFixed(0) : 0}%)
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <p style={{ color: 'var(--text-muted)', fontSize: '12px', textAlign: 'center', padding: '40px 0' }}>
-                  No expense data
-                </p>
-              )}
+            {/* Horizontal bar chart — Plan vs Executed per subcategory */}
+            <Card title="Plan vs Executed" subtitle="All subcategories">
+              <ResponsiveContainer width="100%" height={Math.max(expenseRows.length * 28, 320)}>
+                <BarChart
+                  data={expenseRows.map(r => ({
+                    name: r.level_3 || r.level_2,
+                    plan: r.plan,
+                    executed: r.executed,
+                  }))}
+                  layout="vertical"
+                  margin={{ top: 0, right: 16, bottom: 0, left: 120 }}
+                >
+                  <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.1)" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    tickFormatter={fM}
+                    tick={{ fill: 'var(--text-muted)', fontSize: 10 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    tick={{ fill: 'var(--text-primary)', fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={116}
+                  />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: '11px' }} />
+                  <Bar dataKey="plan" name="Plan" fill="#94a3b8" radius={[0,3,3,0]} barSize={8} />
+                  <Bar dataKey="executed" name="Executed" fill="#f97316" radius={[0,3,3,0]} barSize={8} />
+                </BarChart>
+              </ResponsiveContainer>
             </Card>
+
           </div>
         </>
       )}

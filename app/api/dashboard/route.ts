@@ -53,6 +53,16 @@ export async function GET(request: NextRequest) {
         return { month: m, label: MONTH_SHORT[m], salary, other }
       })
 
+      // Expense by category per month
+      const expenseByCategory = MONTHS.map(m => {
+        const mTxs = transactions.filter(t => t.month_label === m && t.event_type === 'Expense')
+        const life = mTxs.filter(t => t.level_2 === 'Life').reduce((s, t) => s + Number(t.amount), 0)
+        const health = mTxs.filter(t => t.level_2 === 'Health').reduce((s, t) => s + Number(t.amount), 0)
+        const travels = mTxs.filter(t => t.level_2 === 'Travels').reduce((s, t) => s + Number(t.amount), 0)
+        const others = mTxs.filter(t => t.level_2 === 'Others').reduce((s, t) => s + Number(t.amount), 0)
+        return { month: m, label: MONTH_SHORT[m], life, health, travels, others }
+      })
+
       // Latest net worth (from balances logic)
       const latestEquity = await prisma.equityExecuted.findMany({
         where: { market_value_end: { not: null } },
@@ -77,7 +87,7 @@ export async function GET(request: NextRequest) {
       const cashBalance = Number(cashInflow._sum.amount || 0) - Number(cashOutflow._sum.amount || 0)
 
       return NextResponse.json({
-        monthlySummary, ytd, incomeBySource,
+        monthlySummary, ytd, incomeBySource, expenseByCategory,
         netWorth: totalEquity + cashBalance, cashBalance, totalEquity,
       })
     }

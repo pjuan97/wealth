@@ -7,21 +7,11 @@ datasource db {
   provider = "postgresql"
 }
 
-enum EventType {
-  Opening_Balance
-  Income
-  Expense
-  Transfer
-  Investment
-  Withdrawal
-  Debt_Payment
-}
-
 model Transaction {
   id           Int       @id @default(autoincrement())
   date         DateTime  @db.Date
   month_label  String    @db.VarChar(7)
-  event_type   EventType
+  event_type   String    @db.VarChar(50)
   level_1      String    @db.VarChar(50)
   level_2      String    @db.VarChar(50)
   level_3      String?   @db.VarChar(50)

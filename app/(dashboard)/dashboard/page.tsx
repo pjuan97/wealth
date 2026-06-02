@@ -329,9 +329,9 @@ function OverviewTab() {
               <Tooltip content={<ChartTooltip />} />
               <Legend wrapperStyle={{ fontSize: '11px' }} />
               <Line type="monotone" dataKey="Life" stroke="#f97316" strokeWidth={2} dot={{ r: 3, fill: '#f97316' }} />
-              <Line type="monotone" dataKey="Health" stroke="#94a3b8" strokeWidth={2} dot={{ r: 3, fill: '#94a3b8' }} />
-              <Line type="monotone" dataKey="Travels" stroke="#64748b" strokeWidth={2} dot={{ r: 3, fill: '#64748b' }} />
-              <Line type="monotone" dataKey="Others" stroke="#cbd5e1" strokeWidth={2} dot={{ r: 3, fill: '#cbd5e1' }} />
+              <Line type="monotone" dataKey="Health" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3, fill: '#38bdf8' }} />
+              <Line type="monotone" dataKey="Travels" stroke="#a78bfa" strokeWidth={2} dot={{ r: 3, fill: '#a78bfa' }} />
+              <Line type="monotone" dataKey="Others" stroke="#34d399" strokeWidth={2} dot={{ r: 3, fill: '#34d399' }} />
             </LineChart>
           </ResponsiveContainer>
         </Card>
@@ -344,9 +344,9 @@ function OverviewTab() {
               return [
                 { value: m.label },
                 { value: fM(exp?.life || 0), color: '#f97316' },
-                { value: fM(exp?.health || 0), color: '#94a3b8' },
-                { value: fM(exp?.travels || 0), color: '#64748b' },
-                { value: fM(exp?.others || 0) },
+                { value: fM(exp?.health || 0), color: '#38bdf8' },
+                { value: fM(exp?.travels || 0), color: '#a78bfa' },
+                { value: fM(exp?.others || 0), color: '#34d399' },
               ]
             })}
           />

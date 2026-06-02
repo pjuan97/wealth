@@ -27,6 +27,17 @@ const NAV_ITEMS = [
     ),
   },
   {
+    href: '/ai-import',
+    label: 'AI Import',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
+        <path d="M16 14H8a4 4 0 0 0-4 4v2h16v-2a4 4 0 0 0-4-4z"/>
+        <path d="M9 10l3 3 3-3"/>
+      </svg>
+    ),
+  },
+  {
     href: '/balances',
     label: 'Balances',
     icon: (

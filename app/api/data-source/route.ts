@@ -104,7 +104,23 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (type === 'eventType') {
+      const current = await prisma.eventTypeDef.findUnique({ where: { id } })
+      if (!current) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
       const updated = await prisma.eventTypeDef.update({ where: { id }, data })
+
+      // Propagate rename to Transaction table if name changed
+      if (data.name && data.name !== current.name) {
+        const propagated = await prisma.transaction.updateMany({
+          where: { event_type: current.name },
+          data: { event_type: data.name },
+        })
+        return NextResponse.json({
+          updated,
+          propagated: { transactions: propagated.count },
+        })
+      }
+
       return NextResponse.json(updated)
     }
 

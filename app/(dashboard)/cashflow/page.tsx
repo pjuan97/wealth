@@ -45,7 +45,7 @@ const MONTH_SHORT: Record<string, string> = {
   '2026-10': 'Oct', '2026-11': 'Nov', '2026-12': 'Dec',
 }
 
-const CURRENT_MONTH = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+const CURRENT_MONTH = '2026-06'
 const EXPENSE_ORDER = ['Life', 'Health', 'Travels', 'Others']
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

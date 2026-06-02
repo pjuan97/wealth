@@ -33,10 +33,21 @@ async function computeAllExecuted() {
   return map
 }
 
-// Get opening balance for a month (sum of inflows minus outflows into Bancolombia Cash before this month)
+// Get opening balance for a month
 async function getOpeningBalance(monthLabel: string): Promise<number> {
   const monthStart = new Date(`${monthLabel}-01`)
 
+  // For the first month, use Opening_Balance transaction directly
+  const openingTx = await prisma.transaction.findFirst({
+    where: {
+      event_type: 'Opening_Balance',
+      to_account: 'Bancolombia (Cash)',
+      month_label: monthLabel,
+    },
+  })
+  if (openingTx) return Number(openingTx.amount)
+
+  // For subsequent months: balance of Bancolombia (Cash) up to start of this month
   const [inflow, outflow] = await Promise.all([
     prisma.transaction.aggregate({
       where: {

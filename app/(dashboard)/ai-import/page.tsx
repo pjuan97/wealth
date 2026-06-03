@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ImageBatch {
@@ -38,6 +38,18 @@ const ACCOUNT_OPTIONS = [
   'Bancolombia (Cash)','Bancolombia Fiduciary','Credit Cards',
   'Trii','Tyba','Dollar App','Loans','Interactive Brokers',
 ]
+const LEVEL3_BY_LEVEL2: Record<string, string[]> = {
+  'Life': ['Food Market', 'Food Outside', 'Host Rent', 'Public Services', 'Transportation', 'Personal Articles'],
+  'Health': ['Social Security', 'Medicine', 'Health Complementary Plan', 'Gym', 'Protein', 'Hair Treatment', 'Psychology', 'Skin Treatment', 'Dental Treatment'],
+  'Travels': ['Other countries', 'Within Countries', 'Other Tickets'],
+  'Others': ['Cloud Store', 'AI (LLM) -ChatGPT', 'Study', 'Celullar Data', 'Spotify', 'Family/Friends', 'Clothes', 'Technology', 'Events', 'Streaming Platforms', 'Dani', 'Other'],
+  'Income': ['Salary', 'Other Incomes'],
+  'Equity': ['Bank (Cash)', 'Fiduciary', 'ETFs', 'Collective Investment Funds', 'Companies', 'House'],
+  'Debt': ['Credit Cards', 'Loans'],
+  'Financial Movement': ['Financial Movement'],
+}
+const STORAGE_KEY = 'wealth_ai_import_draft'
+const STORAGE_STEP_KEY = 'wealth_ai_import_step'
 
 function formatCOP(n: number | null): string {
   if (!n) return '—'
@@ -112,6 +124,54 @@ export default function AIImportPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null)
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null)
+
+  // ── localStorage draft persistence ─────────────────────────────────────────
+  useEffect(() => {
+    try {
+      const savedStep = localStorage.getItem(STORAGE_STEP_KEY)
+      const savedData = localStorage.getItem(STORAGE_KEY)
+      if (savedData && savedStep === 'review') {
+        const parsed = JSON.parse(savedData)
+        if (parsed.transactions?.length > 0) {
+          setTransactions(parsed.transactions)
+          setFeedback(parsed.feedback || '')
+          setProvider(parsed.provider || null)
+          setDraftSavedAt(parsed.savedAt || null)
+          setStep('review')
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load draft:', e)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (transactions.length > 0) {
+      try {
+        const savedAt = new Date().toISOString()
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          transactions,
+          feedback,
+          provider,
+          savedAt,
+        }))
+        localStorage.setItem(STORAGE_STEP_KEY, 'review')
+        setDraftSavedAt(savedAt)
+      } catch (e) {
+        console.error('Failed to save draft:', e)
+      }
+    }
+  }, [transactions, feedback, provider])
+
+  const clearDraft = () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY)
+      localStorage.removeItem(STORAGE_STEP_KEY)
+    } catch (e) {
+      console.error('Failed to clear draft:', e)
+    }
+  }
 
   // ── File handling ──────────────────────────────────────────────────────────
   const addBatch = () => {
@@ -235,6 +295,7 @@ export default function AIImportPage() {
       })
       const data = await res.json()
       setImportResult(data)
+      clearDraft()
       setStep('done')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import failed')
@@ -526,9 +587,29 @@ export default function AIImportPage() {
                 Enter your API Key
               </h3>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-                Your key is used only for this analysis and immediately discarded after use.
-                It is never stored in the database or code.
+                {feedback
+                  ? 'New API key required for re-analysis. Previous key was already discarded.'
+                  : 'Your key is used only for this analysis and immediately discarded after use. Never stored.'}
               </p>
+
+              {feedback && (
+                <div style={{
+                  padding: '10px 14px',
+                  background: 'var(--accent-subtle)',
+                  border: '1px solid var(--accent-border)',
+                  borderRadius: '8px',
+                  marginBottom: '16px',
+                }}>
+                  <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Re-analysis with feedback
+                  </p>
+                  <p style={{ fontSize: '12px', color: 'var(--text-primary)' }}>&ldquo;{feedback}&rdquo;</p>
+                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                    Enter your API key to run a new analysis with this feedback applied.
+                    The key will be discarded immediately after use.
+                  </p>
+                </div>
+              )}
 
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -581,8 +662,8 @@ export default function AIImportPage() {
                   &larr; Back
                 </button>
                 <button
-                  onClick={() => runAnalysis(false)}
-                  disabled={!apiKey}
+                  onClick={() => runAnalysis(!!feedback)}
+                  disabled={!apiKey || analyzing}
                   style={{
                     ...btnPrimary,
                     background: apiKey ? 'var(--accent)' : 'var(--bg-elevated)',
@@ -590,7 +671,7 @@ export default function AIImportPage() {
                     cursor: apiKey ? 'pointer' : 'not-allowed',
                   }}
                 >
-                  Run Analysis
+                  {analyzing ? 'Analyzing\u2026' : feedback ? 'Re-analyze with Feedback' : 'Run Analysis'}
                 </button>
               </div>
             </div>
@@ -706,6 +787,45 @@ export default function AIImportPage() {
               </div>
             </div>
 
+            {/* Draft saved banner */}
+            {draftSavedAt && (
+              <div style={{
+                padding: '8px 14px',
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border)',
+                borderRadius: '8px',
+                fontSize: '11px',
+                color: 'var(--text-muted)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <span>
+                  Draft auto-saved &middot; Last saved: {new Date(draftSavedAt).toLocaleString()}
+                </span>
+                <button
+                  onClick={() => {
+                    clearDraft()
+                    setBatches([])
+                    setTransactions([])
+                    setFeedback('')
+                    setDraftSavedAt(null)
+                    setStep('upload')
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Discard draft
+                </button>
+              </div>
+            )}
+
             {/* Transaction table */}
             <div style={{
               background: 'var(--bg-surface)',
@@ -767,11 +887,47 @@ export default function AIImportPage() {
                         </td>
                         {/* Level 2 */}
                         <td style={{ padding: '6px 8px', minWidth: '120px' }}>
-                          <EditableCell value={tx.level_2} type="select" options={LEVEL2_OPTIONS} onChange={v => updateTx(tx.id, 'level_2', v)} />
+                          <EditableCell value={tx.level_2} type="select" options={LEVEL2_OPTIONS} onChange={v => {
+                            updateTx(tx.id, 'level_2', v)
+                            const validOptions = LEVEL3_BY_LEVEL2[v] || []
+                            if (!validOptions.includes(tx.level_3 || '')) {
+                              updateTx(tx.id, 'level_3', null)
+                            }
+                          }} />
                         </td>
-                        {/* Level 3 */}
-                        <td style={{ padding: '6px 8px', minWidth: '120px' }}>
-                          <EditableCell value={tx.level_3} onChange={v => updateTx(tx.id, 'level_3', v)} />
+                        {/* Level 3 — dynamic dropdown based on level_2 */}
+                        <td style={{ padding: '6px 8px', minWidth: '140px' }}>
+                          {(() => {
+                            const options = LEVEL3_BY_LEVEL2[tx.level_2] || []
+                            if (options.length === 0) {
+                              return (
+                                <EditableCell
+                                  value={tx.level_3}
+                                  onChange={v => updateTx(tx.id, 'level_3', v || null)}
+                                />
+                              )
+                            }
+                            return (
+                              <select
+                                value={tx.level_3 || ''}
+                                onChange={e => updateTx(tx.id, 'level_3', e.target.value || null)}
+                                style={{
+                                  background: 'var(--bg-elevated)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: '4px',
+                                  padding: '3px 6px',
+                                  color: 'var(--text-primary)',
+                                  fontSize: '12px',
+                                  outline: 'none',
+                                  width: '100%',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <option value="">&mdash;</option>
+                                {options.map(o => <option key={o} value={o}>{o}</option>)}
+                              </select>
+                            )
+                          })()}
                         </td>
                         {/* Amount COP */}
                         <td style={{ padding: '6px 8px', minWidth: '110px' }}>
@@ -848,11 +1004,13 @@ export default function AIImportPage() {
             <div style={{ display: 'flex', gap: '12px' }}>
               <button
                 onClick={() => {
+                  clearDraft()
                   setBatches([])
                   setTransactions([])
                   setFeedback('')
                   setError(null)
                   setImportResult(null)
+                  setDraftSavedAt(null)
                   setStep('upload')
                 }}
                 style={btnSecondary}

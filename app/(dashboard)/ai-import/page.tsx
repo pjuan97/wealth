@@ -59,6 +59,34 @@ function formatCOP(n: number | null): string {
   }).format(n)
 }
 
+// ─── Token matching ───────────────────────────────────────────────────────
+function extractTokens(notes: string): string[] {
+  return notes
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(t => t.length >= 3)
+    .filter(t => !['the', 'and', 'del', 'de', 'la', 'los', 'las', 'com', 'www'].includes(t))
+}
+
+function sharedTokenCount(a: string, b: string): number {
+  const tokensA = new Set(extractTokens(a))
+  const tokensB = new Set(extractTokens(b))
+  let count = 0
+  tokensA.forEach(t => { if (tokensB.has(t)) count++ })
+  return count
+}
+
+function areSimilar(notesA: string, notesB: string): boolean {
+  const a = notesA.trim().toLowerCase()
+  const b = notesB.trim().toLowerCase()
+  if (a === b) return true
+  if (a.includes(b) || b.includes(a)) return true
+  if (sharedTokenCount(a, b) >= 2) return true
+  if (a.length >= 8 && b.length >= 8 && a.slice(0, 8) === b.slice(0, 8)) return true
+  return false
+}
+
 // ─── Editable cell ────────────────────────────────────────────────────────────
 function EditableCell({
   value, onChange, type = 'text', options,
@@ -287,25 +315,21 @@ export default function AIImportPage() {
 
   const countSimilar = (tx: ExtractedTransaction): number => {
     if (!tx.notes) return 0
-    const keyword = tx.notes.trim().toLowerCase()
     return transactions.filter(t =>
       t.id !== tx.id &&
       t.notes &&
-      (t.notes.trim().toLowerCase().includes(keyword) ||
-       keyword.includes(t.notes.trim().toLowerCase()))
+      areSimilar(tx.notes!, t.notes)
     ).length
   }
 
   const applyToSimilar = (sourceTx: ExtractedTransaction) => {
     if (!sourceTx.notes) return
-    const keyword = sourceTx.notes.trim().toLowerCase()
     let count = 0
 
     setTransactions(prev => prev.map(tx => {
       if (tx.id === sourceTx.id) return tx
       if (!tx.notes) return tx
-      if (tx.notes.trim().toLowerCase().includes(keyword) ||
-          keyword.includes(tx.notes.trim().toLowerCase())) {
+      if (areSimilar(sourceTx.notes!, tx.notes)) {
         count++
         return {
           ...tx,
@@ -317,7 +341,11 @@ export default function AIImportPage() {
       return tx
     }))
 
-    setApplyToast(`Applied ${sourceTx.level_2} / ${sourceTx.level_3 || '\u2014'} to ${count} transaction${count !== 1 ? 's' : ''}`)
+    setApplyToast(
+      count > 0
+        ? `Applied ${sourceTx.level_2} / ${sourceTx.level_3 || '\u2014'} to ${count} similar transaction${count !== 1 ? 's' : ''}`
+        : `No similar transactions found for "${sourceTx.notes}"`
+    )
     setTimeout(() => setApplyToast(null), 3000)
   }
 

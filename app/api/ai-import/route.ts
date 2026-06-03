@@ -3,8 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 // Detect provider from API key format
 function detectProvider(apiKey: string): 'anthropic' | 'gemini' | 'openai' {
   if (apiKey.startsWith('sk-ant-')) return 'anthropic'
-  if (apiKey.startsWith('AIza')) return 'gemini'
-  return 'openai'
+  if (apiKey.startsWith('AIza') || apiKey.startsWith('AQ.') || apiKey.startsWith('ya29')) return 'gemini'
+  if (apiKey.startsWith('sk-')) return 'openai'
+  return 'gemini' // default to gemini for unknown formats
 }
 
 // System prompt for transaction extraction

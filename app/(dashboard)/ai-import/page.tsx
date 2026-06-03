@@ -155,9 +155,9 @@ export default function AIImportPage() {
   // ── Detect provider from key ───────────────────────────────────────────────
   const detectProvider = (key: string): string => {
     if (key.startsWith('sk-ant-')) return 'Anthropic Claude'
-    if (key.startsWith('AIza')) return 'Google Gemini'
+    if (key.startsWith('AIza') || key.startsWith('AQ.') || key.startsWith('ya29')) return 'Google Gemini'
     if (key.startsWith('sk-')) return 'OpenAI GPT-4o'
-    return 'Unknown provider'
+    return 'Google Gemini (default)'
   }
 
   // ── Run analysis ───────────────────────────────────────────────────────────

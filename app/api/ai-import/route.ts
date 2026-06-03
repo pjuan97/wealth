@@ -10,49 +10,69 @@ function detectProvider(apiKey: string): 'anthropic' | 'gemini' | 'openai' {
 
 // System prompt for transaction extraction
 function buildSystemPrompt(sourceType: 'cash' | 'credit_card'): string {
+  const numberFormatRules = `
+NUMBER FORMAT — CRITICAL:
+The statement uses this exact format:
+- "USD $ 13,80"  → usd_amount: 13.80  (comma = decimal separator)
+- "COP $ 441,69" → amount: 441.69     (comma = decimal separator)
+- "USD -$ 672,43" → usd_amount: 672.43, this is NEGATIVE (refund/payment)
+- "USD $ 1.234,56" → usd_amount: 1234.56 (period=thousands, comma=decimal)
+
+RULES:
+1. Comma "," is ALWAYS the decimal separator. Never treat it as thousands.
+2. Period "." is ALWAYS the thousands separator. Never treat it as decimal.
+3. Always extract the FULL number including decimals after the comma.
+4. "USD $ 672,43" → usd_amount: 672.43 (NOT 572, NOT 672 without cents)
+5. USD prefix → set usd_amount, leave amount null
+6. COP prefix → set amount, leave usd_amount null
+7. Always output POSITIVE numbers — direction is from from/to accounts
+`
+
   const cashRules = `
 BANCOLOMBIA CASH ACCOUNT RULES:
 - GREEN values (positive, no minus sign) = money ENTERING the account
-  → event_type: Income OR Transfer (if it looks like a bank transfer between own accounts)
+  → event_type: Income OR Transfer
   → to_account: "Bancolombia (Cash)"
-- RED values (negative, with minus sign "-") = money LEAVING the account
+- RED values (negative, with minus sign "-") = money LEAVING
   → event_type: Expense OR Transfer OR Debt_Payment
   → from_account: "Bancolombia (Cash)"
 
 Specific patterns:
-- "ABONO INTERESES AHORROS" → Income, level_2: "Other Incomes", level_3: null
-- "TRASLADO DE FONDO" / "FIDUCUENTA" / "FONDO DE INVERS" → Transfer, from_account or to_account accordingly
+- "ABONO INTERESES AHORROS" → Income, level_2: "Other Incomes"
+- "TRASLADO DE FONDO" / "FIDUCUENTA" / "FONDO DE INVERS" → Transfer
 - "PAGO SUC VIRT TC" / "PAGO AUTOM TC" / "ABONO TC" → Debt_Payment, to_account: "Credit Cards"
 - "TRANSFERENCIA A" person name → Expense, level_2: "Others", level_3: "Family/Friends"
-- "PAGO PSE" → Expense (utility or service payment)
+- "PAGO PSE" → Expense
 - "NEQUI" → Expense, level_2: "Life", level_3: "Transportation"
-- Regular purchases → Expense with appropriate category
+
+${numberFormatRules}
 `
 
   const creditCardRules = `
 CREDIT CARD RULES (OPPOSITE LOGIC FROM BANK):
-- Values WITHOUT minus sign (positive charges) = EXPENSES = merchant charged your card = debt increases
+- Values WITHOUT minus sign = EXPENSES (merchant charge = debt increases)
   → event_type: Expense, from_account: "Credit Cards", to_account: null
 
 - Values WITH minus sign "-" = debt DECREASES. Two subcases:
-  A) Payment from bank account (contains "ABONO SUCURSAL", "ABONO SUC VIRT", "PAGO SUC VIRT"):
-     → SKIP completely — already recorded in bank cash extract
-  B) Merchant REFUND (any other negative value, e.g. "DELTA", "REVERSION", "DEVOLUCION", "REEMBOLSO"):
+  A) Bank payment ("ABONO SUCURSAL", "ABONO SUC VIRT", "PAGO SUC VIRT"):
+     → SKIP — already in bank cash extract
+  B) Merchant REFUND (any other negative, e.g. "DELTA", "REVERSION", "DEVOLUCION"):
      → event_type: Transfer, from_account: null, to_account: "Credit Cards"
-     → This represents money coming BACK to the card (reducing debt)
-     → amount: use the absolute value (remove the minus sign)
+     → amount: absolute value (ignore the minus sign)
+     → level_1: "Financial Movement", level_2: "Financial Movement"
 
-IMPORTANT:
-- "DELTA" with negative value = airline refund → Transfer to "Credit Cards"
-- "REVERSION" with negative value → Transfer to "Credit Cards"
-- Any merchant name with negative value (not a bank payment) = refund → Transfer to "Credit Cards"
-- USD amounts: set usd_amount field, leave amount blank (system calculates COP)
-- COP amounts: set amount field, leave usd_amount blank
+EXAMPLE: "DELTA  USD -$ 672,43" with cuotas: 1
+→ This is a refund (negative + cuotas=1 = one-time reversal)
+→ event_type: Transfer, to_account: "Credit Cards", usd_amount: 672.43
+
+EXAMPLE: "UBER *EATS  USD $ 13,80"
+→ Regular expense: event_type: Expense, from_account: "Credit Cards", usd_amount: 13.80
+
 - "DL *" or "DLO *" prefix = Didi/delivery app → Expense
 - "UBER *" = Transportation → Expense
 - "APPLE.COM" = Cloud Store → Expense
 
-CATEGORY for refunds/transfers: level_1: "Financial Movement", level_2: "Financial Movement", level_3: null
+${numberFormatRules}
 `
 
   return `You are a financial transaction extractor. Extract transactions from bank statement screenshots.

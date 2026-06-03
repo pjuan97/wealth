@@ -134,6 +134,13 @@ async function callAnthropic(apiKey: string, images: string[], sourceType: 'cash
 }
 
 // Call Google Gemini API
+const GEMINI_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-pro',
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+]
+
 async function callGemini(apiKey: string, images: string[], sourceType: 'cash' | 'credit_card', feedback: string | null) {
   const parts: object[] = images.map(img => ({
     inline_data: {
@@ -146,24 +153,35 @@ async function callGemini(apiKey: string, images: string[], sourceType: 'cash' |
     + (feedback ? `\n\nUSER FEEDBACK FROM PREVIOUS EXTRACTION:\n${feedback}\nPlease correct the extraction based on this feedback.` : '')
   parts.push({ text: promptText })
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts }] }),
-    }
-  )
+  let lastError: Error | null = null
+  for (const model of GEMINI_MODELS) {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts }] }),
+      }
+    )
 
-  if (response.status === 400) throw new Error('INVALID_API_KEY')
-  if (response.status === 429) throw new Error('RATE_LIMIT_EXCEEDED')
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}))
-    throw new Error(err.error?.message || `API error ${response.status}`)
+    if (response.status === 401 || response.status === 403) throw new Error('INVALID_API_KEY')
+    if (response.status === 429) throw new Error('RATE_LIMIT_EXCEEDED')
+    if (response.status === 404) {
+      // Model not available, try next
+      lastError = new Error(`Model ${model} not available`)
+      continue
+    }
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      lastError = new Error(err.error?.message || `API error ${response.status}`)
+      continue
+    }
+
+    const data = await response.json()
+    return data.candidates[0].content.parts[0].text
   }
 
-  const data = await response.json()
-  return data.candidates[0].content.parts[0].text
+  throw lastError || new Error('All Gemini models failed')
 }
 
 // Call OpenAI-compatible API

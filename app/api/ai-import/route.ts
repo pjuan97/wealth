@@ -30,25 +30,29 @@ Specific patterns:
 `
 
   const creditCardRules = `
-CREDIT CARD RULES (OPPOSITE LOGIC):
-- GREEN values / values WITHOUT minus sign = EXPENSES (increase debt)
-  → event_type: Expense
-  → from_account: "Credit Cards"
-- RED values / values WITH minus sign "-" = payments or refunds (decrease debt)
-  → If "ABONO SUCURSAL VIRTUAL" or payment → SKIP this transaction (already recorded in bank cash)
-  → If refund/devolución → event_type: Expense with negative amount? No → skip or mark as Transfer
+CREDIT CARD RULES (OPPOSITE LOGIC FROM BANK):
+- Values WITHOUT minus sign (positive charges) = EXPENSES = merchant charged your card = debt increases
+  → event_type: Expense, from_account: "Credit Cards", to_account: null
 
-IMPORTANT for credit cards:
-- SKIP any "ABONO" or payment transactions to avoid double counting
-- USD amounts: extract usd_amount, the COP equivalent will be calculated via FX rate
-- "DL *" or "DLO *" prefix = Didi/delivery app
-- "UBER *" = Transportation
-- "APPLE.COM" = Cloud Store
-- Regular merchants = Expense with best-guess category
+- Values WITH minus sign "-" = debt DECREASES. Two subcases:
+  A) Payment from bank account (contains "ABONO SUCURSAL", "ABONO SUC VIRT", "PAGO SUC VIRT"):
+     → SKIP completely — already recorded in bank cash extract
+  B) Merchant REFUND (any other negative value, e.g. "DELTA", "REVERSION", "DEVOLUCION", "REEMBOLSO"):
+     → event_type: Transfer, from_account: null, to_account: "Credit Cards"
+     → This represents money coming BACK to the card (reducing debt)
+     → amount: use the absolute value (remove the minus sign)
 
-CURRENCY DETECTION:
-- If value shows "USD $X.XX" → set usd_amount = X.XX, leave amount blank (system will calculate)
-- If value shows "COP $X" or just "$X" → set amount = X, leave usd_amount blank
+IMPORTANT:
+- "DELTA" with negative value = airline refund → Transfer to "Credit Cards"
+- "REVERSION" with negative value → Transfer to "Credit Cards"
+- Any merchant name with negative value (not a bank payment) = refund → Transfer to "Credit Cards"
+- USD amounts: set usd_amount field, leave amount blank (system calculates COP)
+- COP amounts: set amount field, leave usd_amount blank
+- "DL *" or "DLO *" prefix = Didi/delivery app → Expense
+- "UBER *" = Transportation → Expense
+- "APPLE.COM" = Cloud Store → Expense
+
+CATEGORY for refunds/transfers: level_1: "Financial Movement", level_2: "Financial Movement", level_3: null
 `
 
   return `You are a financial transaction extractor. Extract transactions from bank statement screenshots.

@@ -899,8 +899,10 @@ export default function AIImportPage() {
               border: '1px solid var(--border)',
               borderRadius: '14px',
               overflow: 'hidden',
+              maxHeight: 'calc(100vh - 340px)',
+              overflowY: 'auto',
+              overflowX: 'auto',
             }}>
-              <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg-base)' }}>
@@ -1069,7 +1071,6 @@ export default function AIImportPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
             </div>
           </div>
         )}

@@ -20,7 +20,49 @@ export async function POST(request: NextRequest) {
     const { type, data } = body
 
     if (type === 'account') {
-      const created = await prisma.accountDef.create({ data })
+      // Separate equity-specific fields (not in AccountDef schema)
+      const { equity_type, start_month, ...accountData } = data
+      const created = await prisma.accountDef.create({ data: accountData })
+
+      // Auto-generate EquityForecast + EquityExecuted rows for investment accounts
+      if (accountData.type === 'investment' && start_month) {
+        const MONTHS_2026 = [
+          '2026-01','2026-02','2026-03','2026-04','2026-05','2026-06',
+          '2026-07','2026-08','2026-09','2026-10','2026-11','2026-12',
+        ]
+        const ANNUAL_RATE = 0.10
+        const MONTHLY_RATE = Math.pow(1 + ANNUAL_RATE, 1/12) - 1
+        const targetMonths = MONTHS_2026.filter(m => m >= start_month)
+
+        for (const month of targetMonths) {
+          const month_start = new Date(`${month}-01`)
+          await prisma.equityForecast.create({
+            data: {
+              month_start,
+              month_label: month,
+              equity_type: equity_type || 'Investment',
+              account: accountData.name,
+              base_equity: 0,
+              annual_rate: ANNUAL_RATE,
+              monthly_rate: MONTHLY_RATE,
+              planned_contribution: 0,
+              planned_withdrawal: 0,
+              projected_end: 0,
+            },
+          })
+          await prisma.equityExecuted.create({
+            data: {
+              month_start,
+              month_label: month,
+              equity_type: equity_type || 'Investment',
+              platform: accountData.name,
+              start_balance: 0,
+              market_value_end: null,
+            },
+          })
+        }
+      }
+
       return NextResponse.json(created, { status: 201 })
     }
     if (type === 'category') {
@@ -144,24 +186,16 @@ export async function DELETE(request: NextRequest) {
       const account = await prisma.accountDef.findUnique({ where: { id } })
       if (!account) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-      const usageCount = await prisma.transaction.count({
-        where: {
-          OR: [
-            { from_account: account.name },
-            { to_account: account.name },
-          ],
-        },
+      // Toggle is_active instead of deleting
+      const updated = await prisma.accountDef.update({
+        where: { id },
+        data: { is_active: !account.is_active },
       })
-
-      if (usageCount > 0) {
-        return NextResponse.json({
-          error: `Cannot delete — used in ${usageCount} transactions`,
-          usageCount,
-        }, { status: 409 })
-      }
-
-      await prisma.accountDef.delete({ where: { id } })
-      return NextResponse.json({ success: true })
+      return NextResponse.json({
+        success: true,
+        is_active: updated.is_active,
+        message: updated.is_active ? 'Account activated' : 'Account deactivated',
+      })
     }
 
     if (type === 'category') {
@@ -173,23 +207,32 @@ export async function DELETE(request: NextRequest) {
       })
 
       if (usageCount > 0) {
-        return NextResponse.json({
-          error: `Cannot delete — used in ${usageCount} transactions`,
-          usageCount,
-        }, { status: 409 })
+        // Toggle instead of delete if in use
+        const updated = await prisma.categoryDef.update({
+          where: { id },
+          data: { is_active: !cat.is_active },
+        })
+        return NextResponse.json({ success: true, is_active: updated.is_active })
       }
 
       await prisma.categoryDef.delete({ where: { id } })
-      return NextResponse.json({ success: true })
+      return NextResponse.json({ success: true, deleted: true })
     }
 
     if (type === 'eventType') {
-      await prisma.eventTypeDef.delete({ where: { id } })
-      return NextResponse.json({ success: true })
+      const et = await prisma.eventTypeDef.findUnique({ where: { id } })
+      if (!et) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+      const updated = await prisma.eventTypeDef.update({
+        where: { id },
+        data: { is_active: !et.is_active },
+      })
+      return NextResponse.json({ success: true, is_active: updated.is_active })
     }
 
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to delete' }, { status: 500 })
+    console.error('DELETE /api/data-source error:', error)
+    return NextResponse.json({ error: 'Failed to update' }, { status: 500 })
   }
 }

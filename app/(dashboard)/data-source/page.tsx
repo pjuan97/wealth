@@ -152,7 +152,7 @@ export default function DataSourcePage() {
   const [editValue, setEditValue] = useState('')
 
   const [showAdd, setShowAdd] = useState(false)
-  const [newAccount, setNewAccount] = useState({ name: '', type: 'cash' })
+  const [newAccount, setNewAccount] = useState({ name: '', type: 'cash', equity_type: '', start_month: '2026-01' })
   const [newCategory, setNewCategory] = useState({ level_1: 'Expense', level_2: '', level_3: '' })
   const [newEventType, setNewEventType] = useState('')
 
@@ -249,7 +249,7 @@ export default function DataSourcePage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type: 'account', data: newAccount }),
         })
-        setNewAccount({ name: '', type: 'cash' })
+        setNewAccount({ name: '', type: 'cash', equity_type: '', start_month: '2026-01' })
       } else if (tab === 'categories') {
         await fetch('/api/data-source', {
           method: 'POST',
@@ -418,6 +418,49 @@ export default function DataSourcePage() {
                     {ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
+                {newAccount.type === 'investment' && (
+                  <>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                        EQUITY TYPE
+                      </label>
+                      <select
+                        style={selectStyle}
+                        value={newAccount.equity_type}
+                        onChange={e => setNewAccount(p => ({ ...p, equity_type: e.target.value }))}
+                      >
+                        <option value="">— Select type —</option>
+                        <option value="ETFs">ETFs</option>
+                        <option value="Fiduciary">Fiduciary</option>
+                        <option value="Collective Investment Funds">Collective Investment Funds</option>
+                        <option value="Companies">Companies</option>
+                        <option value="Savings">Savings</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                        START MONTH
+                      </label>
+                      <select
+                        style={selectStyle}
+                        value={newAccount.start_month}
+                        onChange={e => setNewAccount(p => ({ ...p, start_month: e.target.value }))}
+                      >
+                        {['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06',
+                          '2026-07','2026-08','2026-09','2026-10','2026-11','2026-12'].map(m => {
+                          const labels: Record<string, string> = {
+                            '2026-01':'January','2026-02':'February','2026-03':'March',
+                            '2026-04':'April','2026-05':'May','2026-06':'June',
+                            '2026-07':'July','2026-08':'August','2026-09':'September',
+                            '2026-10':'October','2026-11':'November','2026-12':'December',
+                          }
+                          return <option key={m} value={m}>{labels[m]} 2026</option>
+                        })}
+                      </select>
+                    </div>
+                  </>
+                )}
               </>
             )}
             {tab === 'categories' && (
@@ -480,6 +523,7 @@ export default function DataSourcePage() {
                 <tbody>
                   {accounts.map(acc => (
                     <tr key={acc.id}
+                      style={{ opacity: acc.is_active ? 1 : 0.45 }}
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-surface)' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                     >
@@ -512,11 +556,32 @@ export default function DataSourcePage() {
                             background: 'transparent', border: '1px solid var(--border-strong)',
                             color: 'var(--text-secondary)', cursor: 'pointer',
                           }}>Edit</button>
-                          <button onClick={() => handleDelete('account', acc.id)} style={{
-                            padding: '4px 12px', borderRadius: '6px', fontSize: '12px',
-                            background: 'transparent', border: '1px solid var(--border-strong)',
-                            color: 'var(--text-muted)', cursor: 'pointer',
-                          }}>Delete</button>
+                          <button
+                            onClick={async () => {
+                              if (acc.is_active) {
+                                const confirmed = window.confirm(
+                                  `Deactivate "${acc.name}"? It will be hidden from all dropdowns and Equity module.`
+                                )
+                                if (!confirmed) return
+                              }
+                              const res = await fetch(`/api/data-source?type=account&id=${acc.id}`, {
+                                method: 'DELETE',
+                              })
+                              const data = await res.json()
+                              if (data.success) await load()
+                            }}
+                            style={{
+                              padding: '4px 12px', borderRadius: '6px', fontSize: '12px',
+                              background: acc.is_active ? 'transparent' : 'var(--accent-subtle)',
+                              border: acc.is_active
+                                ? '1px solid var(--border-strong)'
+                                : '1px solid var(--accent-border)',
+                              color: acc.is_active ? 'var(--text-muted)' : 'var(--accent)',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {acc.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -599,6 +664,7 @@ export default function DataSourcePage() {
                 <tbody>
                   {eventTypes.map(et => (
                     <tr key={et.id}
+                      style={{ opacity: et.is_active ? 1 : 0.45 }}
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-surface)' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                     >
@@ -636,11 +702,26 @@ export default function DataSourcePage() {
                             background: 'transparent', border: '1px solid var(--border-strong)',
                             color: 'var(--text-secondary)', cursor: 'pointer',
                           }}>Edit</button>
-                          <button onClick={() => handleDelete('eventType', et.id)} style={{
-                            padding: '4px 12px', borderRadius: '6px', fontSize: '12px',
-                            background: 'transparent', border: '1px solid var(--border-strong)',
-                            color: 'var(--text-muted)', cursor: 'pointer',
-                          }}>Delete</button>
+                          <button
+                            onClick={async () => {
+                              const res = await fetch(`/api/data-source?type=eventType&id=${et.id}`, {
+                                method: 'DELETE',
+                              })
+                              const data = await res.json()
+                              if (data.success) await load()
+                            }}
+                            style={{
+                              padding: '4px 12px', borderRadius: '6px', fontSize: '12px',
+                              background: et.is_active ? 'transparent' : 'var(--accent-subtle)',
+                              border: et.is_active
+                                ? '1px solid var(--border-strong)'
+                                : '1px solid var(--accent-border)',
+                              color: et.is_active ? 'var(--text-muted)' : 'var(--accent)',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {et.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
                         </div>
                       </td>
                     </tr>

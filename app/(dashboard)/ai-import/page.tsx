@@ -282,6 +282,45 @@ export default function AIImportPage() {
     ))
   }
 
+  // ── Apply to similar ──────────────────────────────────────────────────────
+  const [applyToast, setApplyToast] = useState<string | null>(null)
+
+  const countSimilar = (tx: ExtractedTransaction): number => {
+    if (!tx.notes) return 0
+    const keyword = tx.notes.trim().toLowerCase()
+    return transactions.filter(t =>
+      t.id !== tx.id &&
+      t.notes &&
+      (t.notes.trim().toLowerCase().includes(keyword) ||
+       keyword.includes(t.notes.trim().toLowerCase()))
+    ).length
+  }
+
+  const applyToSimilar = (sourceTx: ExtractedTransaction) => {
+    if (!sourceTx.notes) return
+    const keyword = sourceTx.notes.trim().toLowerCase()
+    let count = 0
+
+    setTransactions(prev => prev.map(tx => {
+      if (tx.id === sourceTx.id) return tx
+      if (!tx.notes) return tx
+      if (tx.notes.trim().toLowerCase().includes(keyword) ||
+          keyword.includes(tx.notes.trim().toLowerCase())) {
+        count++
+        return {
+          ...tx,
+          level_2: sourceTx.level_2,
+          level_3: sourceTx.level_3,
+          event_type: sourceTx.event_type,
+        }
+      }
+      return tx
+    }))
+
+    setApplyToast(`Applied ${sourceTx.level_2} / ${sourceTx.level_3 || '\u2014'} to ${count} transaction${count !== 1 ? 's' : ''}`)
+    setTimeout(() => setApplyToast(null), 3000)
+  }
+
   // ── Import approved ────────────────────────────────────────────────────────
   const handleImport = async () => {
     const approved = transactions.filter(t => t.approved)
@@ -854,6 +893,21 @@ export default function AIImportPage() {
                           zIndex: 5,
                         }}>{h}</th>
                       ))}
+                      <th style={{
+                        padding: '10px 10px',
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        color: 'var(--text-muted)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                        textAlign: 'center',
+                        borderBottom: '1px solid var(--border)',
+                        whiteSpace: 'nowrap',
+                        position: 'sticky',
+                        top: 0,
+                        background: 'var(--bg-base)',
+                        zIndex: 5,
+                      }}>Apply</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -957,6 +1011,32 @@ export default function AIImportPage() {
                         <td style={{ padding: '6px 8px', minWidth: '160px' }}>
                           <EditableCell value={tx.notes} onChange={v => updateTx(tx.id, 'notes', v || null)} />
                         </td>
+                        {/* Apply to similar */}
+                        <td style={{ padding: '6px 8px', textAlign: 'center', minWidth: '80px' }}>
+                          {(() => {
+                            const similar = countSimilar(tx)
+                            if (similar === 0) return <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>&mdash;</span>
+                            return (
+                              <button
+                                onClick={() => applyToSimilar(tx)}
+                                title={`Apply ${tx.level_2} / ${tx.level_3 || '\u2014'} to ${similar} similar transaction${similar !== 1 ? 's' : ''}`}
+                                style={{
+                                  padding: '3px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '10px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  background: 'var(--accent-subtle)',
+                                  border: '1px solid var(--accent-border)',
+                                  color: 'var(--accent)',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                &darr; {similar}
+                              </button>
+                            )
+                          })()}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1028,6 +1108,28 @@ export default function AIImportPage() {
         )}
 
       </div>
+
+      {/* Apply toast */}
+      {applyToast && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--accent-border)',
+          borderLeft: '3px solid var(--accent)',
+          borderRadius: '8px',
+          padding: '12px 16px',
+          fontSize: '13px',
+          color: 'var(--text-primary)',
+          zIndex: 999,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+          animation: 'fadeIn 0.2s ease',
+        }}>
+          {applyToast}
+        </div>
+      )}
+      <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
     </div>
   )
 }

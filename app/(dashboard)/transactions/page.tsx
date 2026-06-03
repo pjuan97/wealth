@@ -230,6 +230,84 @@ export default function TransactionsPage() {
 
   const monthLabel = (MONTHS.find(m => m.key === selectedMonth)?.label || '') + ' 2026'
 
+  // ── CSV Export ──────────────────────────────────────────────────────────────
+  const exportCSV = () => {
+    const headers = ['date', 'event_type', 'level_1', 'level_2', 'level_3', 'usd_amount', 'fx_rate', 'amount', 'from_account', 'to_account', 'notes']
+    const rows = filtered.map(t =>
+      headers.map(h => {
+        const val = t[h as keyof Transaction]
+        if (val === null || val === undefined) return ''
+        const s = String(val)
+        return s.includes(',') || s.includes('"') || s.includes('\n')
+          ? `"${s.replace(/"/g, '""')}"`
+          : s
+      }).join(',')
+    )
+    const csv = [headers.join(','), ...rows].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `transactions_${selectedMonth}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // ── CSV Import ──────────────────────────────────────────────────────────────
+  const csvInputRef = useRef<HTMLInputElement>(null)
+
+  const importCSV = async (file: File) => {
+    const text = await file.text()
+    const lines = text.split('\n').filter(l => l.trim())
+    if (lines.length < 2) return
+
+    const headers = lines[0].split(',').map(h => h.trim())
+    const txs = lines.slice(1).map(line => {
+      const values: string[] = []
+      let current = ''
+      let inQuotes = false
+      for (const char of line) {
+        if (char === '"') { inQuotes = !inQuotes; continue }
+        if (char === ',' && !inQuotes) { values.push(current.trim()); current = ''; continue }
+        current += char
+      }
+      values.push(current.trim())
+
+      const obj: Record<string, string | null> = {}
+      headers.forEach((h, i) => { obj[h] = values[i] || null })
+      return {
+        date: obj.date || '',
+        event_type: obj.event_type || 'Expense',
+        level_1: obj.level_1 || 'Expense',
+        level_2: obj.level_2 || 'Others',
+        level_3: obj.level_3 || null,
+        usd_amount: obj.usd_amount ? parseFloat(obj.usd_amount) : null,
+        fx_rate: obj.fx_rate ? parseFloat(obj.fx_rate) : null,
+        amount: obj.amount ? parseFloat(obj.amount) : null,
+        from_account: obj.from_account || null,
+        to_account: obj.to_account || null,
+        notes: obj.notes || null,
+      }
+    }).filter(t => t.date && t.amount)
+
+    if (txs.length === 0) return
+
+    try {
+      const res = await fetch('/api/ai-import/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactions: txs }),
+      })
+      const data = await res.json()
+      if (data.imported > 0) {
+        fetchTransactions(selectedMonth)
+      }
+      alert(`Imported ${data.imported} of ${txs.length} transactions.${data.errors?.length ? '\nErrors:\n' + data.errors.join('\n') : ''}`)
+    } catch (err) {
+      alert('Import failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
+    }
+  }
+
   const filterInputStyle: React.CSSProperties = {
     width: '100%',
     background: 'var(--bg-elevated)',
@@ -280,24 +358,66 @@ export default function TransactionsPage() {
               {monthLabel}
             </p>
           </div>
-          <button
-            onClick={() => setFormOpen(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 16px',
-              background: 'var(--accent)',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '8px',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            + New Transaction
-          </button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <input
+              ref={csvInputRef}
+              type="file"
+              accept=".csv"
+              style={{ display: 'none' }}
+              onChange={e => {
+                if (e.target.files?.[0]) importCSV(e.target.files[0])
+                e.target.value = ''
+              }}
+            />
+            <button
+              onClick={exportCSV}
+              style={{
+                padding: '8px 14px',
+                background: 'transparent',
+                color: 'var(--text-secondary)',
+                border: '1px solid var(--border-strong)',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              Export CSV
+            </button>
+            <button
+              onClick={() => csvInputRef.current?.click()}
+              style={{
+                padding: '8px 14px',
+                background: 'transparent',
+                color: 'var(--text-secondary)',
+                border: '1px solid var(--border-strong)',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              Import CSV
+            </button>
+            <button
+              onClick={() => setFormOpen(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 16px',
+                background: 'var(--accent)',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              + New Transaction
+            </button>
+          </div>
         </div>
 
         {/* Month tabs */}

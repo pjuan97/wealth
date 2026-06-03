@@ -255,8 +255,8 @@ export default function BalancesPage() {
             <AreaChart data={chartData} margin={{ top: 8, right: 16, bottom: 0, left: 16 }}>
               <defs>
                 <linearGradient id="netWorthGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#94a3b8" stopOpacity={0.25}/>
-                  <stop offset="100%" stopColor="#94a3b8" stopOpacity={0.02}/>
+                  <stop offset="0%" stopColor="#f97316" stopOpacity={0.25}/>
+                  <stop offset="100%" stopColor="#f97316" stopOpacity={0.02}/>
                 </linearGradient>
                 <linearGradient id="assetGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#cbd5e1" stopOpacity={0.2}/>
@@ -293,20 +293,20 @@ export default function BalancesPage() {
                   <Area
                     type="monotone"
                     dataKey="netWorth"
-                    stroke="#e2e8f0"
+                    stroke="#f97316"
                     strokeWidth={2.5}
                     fill="url(#netWorthGrad)"
-                    dot={{ fill: '#e2e8f0', stroke: '#0f172a', strokeWidth: 2, r: 5 }}
-                    activeDot={{ fill: '#ffffff', stroke: '#e2e8f0', strokeWidth: 2, r: 6 }}
+                    dot={{ fill: '#f97316', stroke: '#0f172a', strokeWidth: 2, r: 5 }}
+                    activeDot={{ fill: '#ffffff', stroke: '#f97316', strokeWidth: 2, r: 6 }}
                     name="Net Worth"
                   />
                   {/* Trend line */}
                   <Line
                     type="linear"
                     dataKey="trend"
-                    stroke="#64748b"
+                    stroke="var(--text-secondary)"
                     strokeWidth={1.5}
-                    strokeDasharray="6 4"
+                    strokeDasharray="5 3"
                     dot={false}
                     activeDot={false}
                     name="Trend"
@@ -342,7 +342,7 @@ export default function BalancesPage() {
           {/* Chart legend */}
           <div style={{ display: 'flex', gap: '20px', marginTop: '12px', paddingLeft: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: '20px', height: '2.5px', background: '#e2e8f0', borderRadius: '2px' }}/>
+              <div style={{ width: '20px', height: '2.5px', background: '#f97316', borderRadius: '2px' }}/>
               <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                 {chartView === 'netWorth' ? 'Net Worth' : 'Assets'}
               </span>

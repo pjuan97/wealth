@@ -906,7 +906,33 @@ export default function AIImportPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg-base)' }}>
-                      {['\u2713', 'Date', 'Type', 'Level 2', 'Level 3', 'Amount COP', 'USD', 'From', 'To', 'Notes'].map((h, i) => (
+                      <th style={{
+                        padding: '10px 10px',
+                        textAlign: 'center',
+                        borderBottom: '1px solid var(--border)',
+                        position: 'sticky',
+                        top: 0,
+                        background: 'var(--bg-base)',
+                        zIndex: 5,
+                      }}>
+                        <input
+                          type="checkbox"
+                          ref={el => {
+                            if (el) {
+                              const all = transactions.length
+                              const checked = transactions.filter(t => t.approved).length
+                              el.checked = all > 0 && checked === all
+                              el.indeterminate = checked > 0 && checked < all
+                            }
+                          }}
+                          onChange={e => {
+                            const val = e.target.checked
+                            setTransactions(prev => prev.map(t => ({ ...t, approved: val })))
+                          }}
+                          style={{ cursor: 'pointer', accentColor: 'var(--accent)' }}
+                        />
+                      </th>
+                      {['Date', 'Type', 'Level 2', 'Level 3', 'Amount COP', 'USD', 'From', 'To', 'Notes'].map((h, i) => (
                         <th key={i} style={{
                           padding: '10px 10px',
                           fontSize: '10px',
@@ -914,7 +940,7 @@ export default function AIImportPage() {
                           color: 'var(--text-muted)',
                           textTransform: 'uppercase',
                           letterSpacing: '0.05em',
-                          textAlign: i === 0 ? 'center' : 'left',
+                          textAlign: 'left',
                           borderBottom: '1px solid var(--border)',
                           whiteSpace: 'nowrap',
                           position: 'sticky',

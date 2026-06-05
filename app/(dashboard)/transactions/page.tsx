@@ -103,6 +103,34 @@ export default function TransactionsPage() {
   const observerRef = useRef<IntersectionObserver | null>(null)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
+  // ── Duplicate detection ────────────────────────────────────────────────────
+  const [duplicateIds, setDuplicateIds] = useState<Set<number>>(new Set())
+  const [showDuplicates, setShowDuplicates] = useState(false)
+  const [loadingDuplicates, setLoadingDuplicates] = useState(false)
+  const [duplicateCount, setDuplicateCount] = useState(0)
+
+  const detectDuplicates = async () => {
+    if (showDuplicates) {
+      setShowDuplicates(false)
+      setDuplicateIds(new Set())
+      setDuplicateCount(0)
+      return
+    }
+
+    setLoadingDuplicates(true)
+    try {
+      const res = await fetch('/api/transactions/duplicates')
+      const data = await res.json()
+      setDuplicateIds(new Set(data.duplicateIds))
+      setDuplicateCount(data.pairs)
+      setShowDuplicates(true)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoadingDuplicates(false)
+    }
+  }
+
   const fetchTransactions = useCallback(async (month: string, cursor?: number) => {
     setLoading(true)
     try {
@@ -400,6 +428,31 @@ export default function TransactionsPage() {
               Import CSV
             </button>
             <button
+              onClick={detectDuplicates}
+              disabled={loadingDuplicates}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 16px',
+                background: showDuplicates ? 'var(--accent-subtle)' : 'transparent',
+                color: showDuplicates ? 'var(--accent)' : 'var(--text-secondary)',
+                border: showDuplicates
+                  ? '1px solid var(--accent-border)'
+                  : '1px solid var(--border-strong)',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 500,
+                cursor: loadingDuplicates ? 'wait' : 'pointer',
+              }}
+            >
+              {loadingDuplicates
+                ? '\u23F3 Scanning\u2026'
+                : showDuplicates
+                ? `\u26A0\uFE0F ${duplicateCount} duplicate${duplicateCount !== 1 ? 's' : ''} \u00B7 Clear`
+                : '\uD83D\uDD0D Find Duplicates'}
+            </button>
+            <button
               onClick={() => setFormOpen(true)}
               style={{
                 display: 'flex',
@@ -559,6 +612,44 @@ export default function TransactionsPage() {
         ))}
       </div>
 
+      {/* Duplicate banner */}
+      {showDuplicates && duplicateCount > 0 && (
+        <div style={{
+          padding: '10px 32px',
+          background: 'var(--accent-subtle)',
+          borderBottom: '1px solid var(--accent-border)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0,
+        }}>
+          <p style={{ fontSize: '13px', color: 'var(--accent)', fontWeight: 600 }}>
+            {'\u26A0\uFE0F'} {duplicateCount} possible duplicate pair{duplicateCount !== 1 ? 's' : ''} found
+            <span style={{ fontWeight: 400, color: 'var(--text-secondary)', marginLeft: '8px' }}>
+              &middot; Matching on: same date + same amount + same notes
+            </span>
+          </p>
+          <button
+            onClick={() => {
+              setShowDuplicates(false)
+              setDuplicateIds(new Set())
+              setDuplicateCount(0)
+            }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--accent)',
+              cursor: 'pointer',
+              fontSize: '13px',
+              fontWeight: 500,
+              textDecoration: 'underline',
+            }}
+          >
+            Clear highlights
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       <div style={{ flex: 1, overflow: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '1100px' }}>
@@ -653,12 +744,25 @@ export default function TransactionsPage() {
                 <tr
                   key={t.id}
                   className="group"
-                  style={{ borderBottom: '1px solid var(--border)' }}
+                  style={{
+                    borderBottom: '1px solid var(--border)',
+                    background: showDuplicates && duplicateIds.has(t.id)
+                      ? 'rgba(249, 115, 22, 0.08)'
+                      : 'transparent',
+                    outline: showDuplicates && duplicateIds.has(t.id)
+                      ? '1px solid var(--accent-border)'
+                      : 'none',
+                  }}
                   onMouseEnter={e => {
-                    (e.currentTarget as HTMLElement).style.background = 'var(--bg-surface)'
+                    if (!(showDuplicates && duplicateIds.has(t.id))) {
+                      (e.currentTarget as HTMLElement).style.background = 'var(--bg-surface)'
+                    }
                   }}
                   onMouseLeave={e => {
-                    (e.currentTarget as HTMLElement).style.background = 'transparent'
+                    (e.currentTarget as HTMLElement).style.background =
+                      showDuplicates && duplicateIds.has(t.id)
+                        ? 'rgba(249, 115, 22, 0.08)'
+                        : 'transparent'
                   }}
                 >
                   {/* Date */}
@@ -714,9 +818,24 @@ export default function TransactionsPage() {
 
                   {/* Notes */}
                   <td style={{ padding: '12px 12px', color: 'var(--text-primary)', fontSize: '12px', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    <span title={t.notes || ''}>
-                      {t.notes || '\u2014'}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {showDuplicates && duplicateIds.has(t.id) && (
+                        <span style={{
+                          flexShrink: 0,
+                          padding: '1px 5px',
+                          borderRadius: '3px',
+                          fontSize: '9px',
+                          fontWeight: 700,
+                          background: 'var(--accent)',
+                          color: '#ffffff',
+                        }}>
+                          DUP
+                        </span>
+                      )}
+                      <span title={t.notes || ''} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {t.notes || '\u2014'}
+                      </span>
+                    </div>
                   </td>
 
                   {/* Delete */}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ImageBatch {
@@ -137,6 +137,48 @@ function EditableCell({
   )
 }
 
+// ─── Sortable header ─────────────────────────────────────────────────────────
+function SortableHeader({
+  label, sortKey, currentSort, onSort, align = 'left'
+}: {
+  label: string
+  sortKey: string
+  currentSort: { key: string; direction: 'asc' | 'desc' } | null
+  onSort: (key: string) => void
+  align?: 'left' | 'right'
+}) {
+  const isActive = currentSort?.key === sortKey
+  return (
+    <th
+      onClick={() => onSort(sortKey)}
+      style={{
+        padding: '10px 10px',
+        fontSize: '10px',
+        fontWeight: 700,
+        color: isActive ? 'var(--accent)' : 'var(--text-muted)',
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
+        textAlign: align,
+        borderBottom: '1px solid var(--border)',
+        whiteSpace: 'nowrap',
+        position: 'sticky',
+        top: 0,
+        background: 'var(--bg-base)',
+        zIndex: 5,
+        cursor: 'pointer',
+        userSelect: 'none',
+      }}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: align === 'right' ? 'flex-end' : 'flex-start' }}>
+        {label}
+        <span style={{ fontSize: '9px', opacity: isActive ? 1 : 0.4 }}>
+          {isActive ? (currentSort?.direction === 'asc' ? '\u25B2' : '\u25BC') : '\u21C5'}
+        </span>
+      </span>
+    </th>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function AIImportPage() {
   const [step, setStep] = useState<Step>('upload')
@@ -153,6 +195,88 @@ export default function AIImportPage() {
   const [dragOver, setDragOver] = useState<string | null>(null)
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null)
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null)
+
+  // ── Sort state ──────────────────────────────────────────────────────────────
+  const [sortConfig, setSortConfig] = useState<{
+    key: string
+    direction: 'asc' | 'desc'
+  } | null>(null)
+
+  const handleSort = (key: string) => {
+    setSortConfig(prev =>
+      prev?.key === key
+        ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
+        : { key, direction: 'asc' }
+    )
+  }
+
+  const sortedTransactions = useMemo(() => {
+    if (!sortConfig) return transactions
+    return [...transactions].sort((a, b) => {
+      let aVal: string | number = ''
+      let bVal: string | number = ''
+
+      switch (sortConfig.key) {
+        case 'date':
+          aVal = a.date || ''
+          bVal = b.date || ''
+          break
+        case 'event_type':
+          aVal = a.event_type || ''
+          bVal = b.event_type || ''
+          break
+        case 'level_2':
+          aVal = a.level_2 || ''
+          bVal = b.level_2 || ''
+          break
+        case 'level_3':
+          aVal = a.level_3 || ''
+          bVal = b.level_3 || ''
+          break
+        case 'amount':
+          aVal = Number(a.amount) || 0
+          bVal = Number(b.amount) || 0
+          break
+        case 'usd_amount':
+          aVal = Number(a.usd_amount) || 0
+          bVal = Number(b.usd_amount) || 0
+          break
+        case 'notes':
+          aVal = a.notes || ''
+          bVal = b.notes || ''
+          break
+      }
+
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [transactions, sortConfig])
+
+  // ── Duplicate detection ────────────────────────────────────────────────────
+  const [showDuplicates, setShowDuplicates] = useState(false)
+
+  const duplicateIds = useMemo(() => {
+    const seen = new Map<string, string>() // key → first tx id
+    const dupes = new Set<string>()
+
+    for (const tx of transactions) {
+      const key = [
+        tx.date || '',
+        String(tx.amount || tx.usd_amount || ''),
+        (tx.notes || '').trim().toLowerCase(),
+      ].join('|')
+
+      if (seen.has(key)) {
+        dupes.add(tx.id)
+        dupes.add(seen.get(key)!)
+      } else {
+        seen.set(key, tx.id)
+      }
+    }
+
+    return dupes
+  }, [transactions])
 
   // ── localStorage draft persistence ─────────────────────────────────────────
   useEffect(() => {
@@ -803,6 +927,27 @@ export default function AIImportPage() {
                 >
                   Deselect All
                 </button>
+                <button
+                  onClick={() => setShowDuplicates(prev => !prev)}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    background: showDuplicates ? 'var(--accent-subtle)' : 'transparent',
+                    border: showDuplicates ? '1px solid var(--accent-border)' : '1px solid var(--border-strong)',
+                    color: showDuplicates ? 'var(--accent)' : 'var(--text-secondary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  {duplicateIds.size > 0
+                    ? `\u26A0\uFE0F ${Math.floor(duplicateIds.size / 2)} duplicates`
+                    : '\u2713 No duplicates'}
+                  {showDuplicates ? ' \u00B7 Hide' : ' \u00B7 Show'}
+                </button>
                 <button onClick={handleImport} disabled={approvedCount === 0} style={{
                   ...btnPrimary,
                   background: approvedCount > 0 ? 'var(--accent)' : 'var(--bg-elevated)',
@@ -932,23 +1077,25 @@ export default function AIImportPage() {
                           style={{ cursor: 'pointer', accentColor: 'var(--accent)' }}
                         />
                       </th>
-                      {['Date', 'Type', 'Level 2', 'Level 3', 'Amount COP', 'USD', 'From', 'To', 'Notes'].map((h, i) => (
-                        <th key={i} style={{
-                          padding: '10px 10px',
-                          fontSize: '10px',
-                          fontWeight: 700,
-                          color: 'var(--text-muted)',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.05em',
-                          textAlign: 'left',
-                          borderBottom: '1px solid var(--border)',
-                          whiteSpace: 'nowrap',
-                          position: 'sticky',
-                          top: 0,
-                          background: 'var(--bg-base)',
-                          zIndex: 5,
-                        }}>{h}</th>
-                      ))}
+                      <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} onSort={handleSort} />
+                      <SortableHeader label="Type" sortKey="event_type" currentSort={sortConfig} onSort={handleSort} />
+                      <SortableHeader label="Level 2" sortKey="level_2" currentSort={sortConfig} onSort={handleSort} />
+                      <SortableHeader label="Level 3" sortKey="level_3" currentSort={sortConfig} onSort={handleSort} />
+                      <SortableHeader label="Amount COP" sortKey="amount" currentSort={sortConfig} onSort={handleSort} align="right" />
+                      <SortableHeader label="USD" sortKey="usd_amount" currentSort={sortConfig} onSort={handleSort} align="right" />
+                      <th style={{
+                        padding: '10px 10px', fontSize: '10px', fontWeight: 700,
+                        color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em',
+                        textAlign: 'left', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
+                        position: 'sticky', top: 0, background: 'var(--bg-base)', zIndex: 5,
+                      }}>From</th>
+                      <th style={{
+                        padding: '10px 10px', fontSize: '10px', fontWeight: 700,
+                        color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em',
+                        textAlign: 'left', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
+                        position: 'sticky', top: 0, background: 'var(--bg-base)', zIndex: 5,
+                      }}>To</th>
+                      <SortableHeader label="Notes" sortKey="notes" currentSort={sortConfig} onSort={handleSort} />
                       <th style={{
                         padding: '10px 10px',
                         fontSize: '10px',
@@ -967,16 +1114,21 @@ export default function AIImportPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {transactions.map(tx => (
+                    {sortedTransactions.map(tx => (
                       <tr
                         key={tx.id}
                         style={{
                           borderBottom: '1px solid var(--border)',
-                          background: tx.approved ? 'transparent' : 'rgba(71,85,105,0.15)',
+                          background: showDuplicates && duplicateIds.has(tx.id)
+                            ? 'rgba(249, 115, 22, 0.08)'
+                            : tx.approved ? 'transparent' : 'rgba(71,85,105,0.15)',
                           opacity: tx.approved ? 1 : 0.5,
+                          outline: showDuplicates && duplicateIds.has(tx.id)
+                            ? '1px solid var(--accent-border)'
+                            : 'none',
                         }}
-                        onMouseEnter={e => { if (tx.approved) (e.currentTarget as HTMLElement).style.background = 'var(--bg-surface)' }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = tx.approved ? 'transparent' : 'rgba(71,85,105,0.15)' }}
+                        onMouseEnter={e => { if (tx.approved) (e.currentTarget as HTMLElement).style.background = showDuplicates && duplicateIds.has(tx.id) ? 'rgba(249, 115, 22, 0.12)' : 'var(--bg-surface)' }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = showDuplicates && duplicateIds.has(tx.id) ? 'rgba(249, 115, 22, 0.08)' : tx.approved ? 'transparent' : 'rgba(71,85,105,0.15)' }}
                       >
                         {/* Checkbox */}
                         <td style={{ padding: '8px 10px', textAlign: 'center' }}>
@@ -1065,6 +1217,21 @@ export default function AIImportPage() {
                         </td>
                         {/* Notes */}
                         <td style={{ padding: '6px 8px', minWidth: '160px' }}>
+                          {showDuplicates && duplicateIds.has(tx.id) && (
+                            <span style={{
+                              display: 'inline-block',
+                              marginRight: '6px',
+                              padding: '1px 5px',
+                              borderRadius: '3px',
+                              fontSize: '9px',
+                              fontWeight: 700,
+                              background: 'var(--accent)',
+                              color: '#ffffff',
+                              verticalAlign: 'middle',
+                            }}>
+                              DUP
+                            </span>
+                          )}
                           <EditableCell value={tx.notes} onChange={v => updateTx(tx.id, 'notes', v || null)} />
                         </td>
                         {/* Apply to similar */}

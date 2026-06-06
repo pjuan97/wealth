@@ -126,7 +126,7 @@ async function callAnthropic(apiKey: string, images: string[], sourceType: 'cash
       data: img,
     },
   }))
-  const userText = 'Extract all transactions from these bank statement images. Return only a JSON array.'
+  const userText = 'Extract all transactions from these bank statement images. Your response must be ONLY a valid JSON array starting with [ and ending with ]. No explanation, no markdown, no code blocks. Start your response with [ directly.'
     + (feedback ? `\n\nUSER FEEDBACK FROM PREVIOUS EXTRACTION:\n${feedback}\nPlease correct the extraction based on this feedback.` : '')
   content.push({ type: 'text', text: userText })
 
@@ -248,17 +248,46 @@ async function callOpenAI(apiKey: string, images: string[], sourceType: 'cash' |
 
 // Parse LLM response to transactions array
 function parseTransactions(text: string): object[] {
-  // Strip markdown code blocks if present
-  const cleaned = text
-    .replace(/```json\n?/g, '')
-    .replace(/```\n?/g, '')
+  // Strip markdown code blocks
+  let cleaned = text
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/gi, '')
     .trim()
 
-  // Find JSON array
-  const match = cleaned.match(/\[[\s\S]*\]/)
-  if (!match) throw new Error('No JSON array found in response')
+  // Try to find JSON array directly
+  const arrayMatch = cleaned.match(/\[[\s\S]*\]/)
+  if (arrayMatch) {
+    try {
+      return JSON.parse(arrayMatch[0])
+    } catch (e) {
+      // Array found but invalid JSON — try to fix common issues
+      console.error('JSON parse error on array match:', e)
+    }
+  }
 
-  return JSON.parse(match[0])
+  // Try parsing the entire cleaned text
+  try {
+    const parsed = JSON.parse(cleaned)
+    if (Array.isArray(parsed)) return parsed
+    // If it's an object with a transactions key
+    if (parsed.transactions) return parsed.transactions
+  } catch (e) {
+    console.error('JSON parse error on full text:', e)
+  }
+
+  // Last resort: find anything that looks like an array of objects
+  const matches = cleaned.match(/\[\s*\{[\s\S]*?\}\s*\]/g)
+  if (matches && matches.length > 0) {
+    for (const match of matches) {
+      try {
+        const parsed = JSON.parse(match)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      } catch { continue }
+    }
+  }
+
+  console.error('Full response text:', text.substring(0, 500))
+  throw new Error('No JSON array found in response')
 }
 
 export async function POST(request: NextRequest) {

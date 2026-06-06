@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { verifyRequestSession } from '@/lib/auth'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const session = await verifyRequestSession(request)
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = session.id
+
   try {
     const [accounts, categories, eventTypes] = await Promise.all([
-      prisma.accountDef.findMany({ orderBy: [{ type: 'asc' }, { name: 'asc' }] }),
-      prisma.categoryDef.findMany({ orderBy: [{ level_1: 'asc' }, { level_2: 'asc' }, { level_3: 'asc' }] }),
-      prisma.eventTypeDef.findMany({ orderBy: { name: 'asc' } }),
+      prisma.accountDef.findMany({ where: { user_id: userId }, orderBy: [{ type: 'asc' }, { name: 'asc' }] }),
+      prisma.categoryDef.findMany({ where: { user_id: userId }, orderBy: [{ level_1: 'asc' }, { level_2: 'asc' }, { level_3: 'asc' }] }),
+      prisma.eventTypeDef.findMany({ where: { user_id: userId }, orderBy: { name: 'asc' } }),
     ])
     return NextResponse.json({ accounts, categories, eventTypes })
   } catch (error) {
@@ -15,16 +22,20 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const session = await verifyRequestSession(request)
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = session.id
+
   try {
     const body = await request.json()
     const { type, data } = body
 
     if (type === 'account') {
-      // Separate equity-specific fields (not in AccountDef schema)
       const { equity_type, start_month, ...accountData } = data
-      const created = await prisma.accountDef.create({ data: accountData })
+      const created = await prisma.accountDef.create({ data: { ...accountData, user_id: userId } })
 
-      // Auto-generate EquityForecast + EquityExecuted rows for investment accounts
       if (accountData.type === 'investment' && start_month) {
         const MONTHS_2026 = [
           '2026-01','2026-02','2026-03','2026-04','2026-05','2026-06',
@@ -38,6 +49,7 @@ export async function POST(request: NextRequest) {
           const month_start = new Date(`${month}-01`)
           await prisma.equityForecast.create({
             data: {
+              user_id: userId,
               month_start,
               month_label: month,
               equity_type: equity_type || 'Investment',
@@ -52,6 +64,7 @@ export async function POST(request: NextRequest) {
           })
           await prisma.equityExecuted.create({
             data: {
+              user_id: userId,
               month_start,
               month_label: month,
               equity_type: equity_type || 'Investment',
@@ -66,11 +79,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(created, { status: 201 })
     }
     if (type === 'category') {
-      const created = await prisma.categoryDef.create({ data })
+      const created = await prisma.categoryDef.create({ data: { ...data, user_id: userId } })
       return NextResponse.json(created, { status: 201 })
     }
     if (type === 'eventType') {
-      const created = await prisma.eventTypeDef.create({ data: { name: data.name } })
+      const created = await prisma.eventTypeDef.create({ data: { name: data.name, user_id: userId } })
       return NextResponse.json(created, { status: 201 })
     }
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
@@ -80,29 +93,39 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const session = await verifyRequestSession(request)
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = session.id
+
   try {
     const body = await request.json()
     const { type, id, data, propagate, oldName, newName } = body
 
     if (type === 'account') {
+      // Verify ownership
+      const existing = await prisma.accountDef.findFirst({ where: { id, user_id: userId } })
+      if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
       const updated = await prisma.accountDef.update({ where: { id }, data })
 
       if (propagate && oldName && newName) {
         const [txFrom, txTo, equityExec, equityForecast] = await Promise.all([
           prisma.transaction.updateMany({
-            where: { from_account: oldName },
+            where: { user_id: userId, from_account: oldName },
             data: { from_account: newName },
           }),
           prisma.transaction.updateMany({
-            where: { to_account: oldName },
+            where: { user_id: userId, to_account: oldName },
             data: { to_account: newName },
           }),
           prisma.equityExecuted.updateMany({
-            where: { platform: oldName },
+            where: { user_id: userId, platform: oldName },
             data: { platform: newName },
           }),
           prisma.equityForecast.updateMany({
-            where: { account: oldName },
+            where: { user_id: userId, account: oldName },
             data: { account: newName },
           }),
         ])
@@ -120,6 +143,9 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (type === 'category') {
+      const existing = await prisma.categoryDef.findFirst({ where: { id, user_id: userId } })
+      if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
       const updated = await prisma.categoryDef.update({ where: { id }, data })
 
       if (propagate) {
@@ -127,7 +153,7 @@ export async function PATCH(request: NextRequest) {
         if (data.level_2 && oldName?.level_2 !== data.level_2) {
           updates.push(
             prisma.transaction.updateMany({
-              where: { level_2: oldName.level_2 },
+              where: { user_id: userId, level_2: oldName.level_2 },
               data: { level_2: data.level_2 },
             })
           )
@@ -135,7 +161,7 @@ export async function PATCH(request: NextRequest) {
         if (data.level_3 && oldName?.level_3 !== data.level_3) {
           updates.push(
             prisma.transaction.updateMany({
-              where: { level_3: oldName.level_3 },
+              where: { user_id: userId, level_3: oldName.level_3 },
               data: { level_3: data.level_3 },
             })
           )
@@ -146,15 +172,14 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (type === 'eventType') {
-      const current = await prisma.eventTypeDef.findUnique({ where: { id } })
+      const current = await prisma.eventTypeDef.findFirst({ where: { id, user_id: userId } })
       if (!current) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
       const updated = await prisma.eventTypeDef.update({ where: { id }, data })
 
-      // Propagate rename to Transaction table if name changed
       if (data.name && data.name !== current.name) {
         const propagated = await prisma.transaction.updateMany({
-          where: { event_type: current.name },
+          where: { user_id: userId, event_type: current.name },
           data: { event_type: data.name },
         })
         return NextResponse.json({
@@ -173,6 +198,12 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const session = await verifyRequestSession(request)
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = session.id
+
   try {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type')
@@ -183,10 +214,9 @@ export async function DELETE(request: NextRequest) {
     }
 
     if (type === 'account') {
-      const account = await prisma.accountDef.findUnique({ where: { id } })
+      const account = await prisma.accountDef.findFirst({ where: { id, user_id: userId } })
       if (!account) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-      // Toggle is_active instead of deleting
       const updated = await prisma.accountDef.update({
         where: { id },
         data: { is_active: !account.is_active },
@@ -199,15 +229,14 @@ export async function DELETE(request: NextRequest) {
     }
 
     if (type === 'category') {
-      const cat = await prisma.categoryDef.findUnique({ where: { id } })
+      const cat = await prisma.categoryDef.findFirst({ where: { id, user_id: userId } })
       if (!cat) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
       const usageCount = await prisma.transaction.count({
-        where: { level_2: cat.level_2, level_3: cat.level_3 ?? undefined },
+        where: { user_id: userId, level_2: cat.level_2, level_3: cat.level_3 ?? undefined },
       })
 
       if (usageCount > 0) {
-        // Toggle instead of delete if in use
         const updated = await prisma.categoryDef.update({
           where: { id },
           data: { is_active: !cat.is_active },
@@ -220,7 +249,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     if (type === 'eventType') {
-      const et = await prisma.eventTypeDef.findUnique({ where: { id } })
+      const et = await prisma.eventTypeDef.findFirst({ where: { id, user_id: userId } })
       if (!et) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
       const updated = await prisma.eventTypeDef.update({

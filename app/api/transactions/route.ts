@@ -1,15 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getRateForDate } from '@/lib/fxService'
+import { verifyRequestSession } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
+  const session = await verifyRequestSession(request)
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = session.id
+
   const { searchParams } = new URL(request.url)
   const month = searchParams.get('month')
   const cursor = searchParams.get('cursor')
   const limit = 50
 
   try {
-    const where = month ? { month_label: month } : {}
+    const where = {
+      user_id: userId,
+      ...(month ? { month_label: month } : {}),
+    }
 
     const [transactions, fxRate] = await Promise.all([
       prisma.transaction.findMany({
@@ -40,6 +50,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const session = await verifyRequestSession(request)
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = session.id
+
   try {
     const body = await request.json()
 
@@ -70,6 +86,7 @@ export async function POST(request: NextRequest) {
 
     const transaction = await prisma.transaction.create({
       data: {
+        user_id: userId,
         date: txDate,
         month_label: body.month_label || monthLabel,
         event_type: body.event_type,
@@ -93,10 +110,20 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const session = await verifyRequestSession(request)
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = session.id
+
   const { searchParams } = new URL(request.url)
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
   try {
+    // Verify ownership before deleting
+    const tx = await prisma.transaction.findFirst({ where: { id: parseInt(id), user_id: userId } })
+    if (!tx) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
     await prisma.transaction.delete({ where: { id: parseInt(id) } })
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -1,9 +1,17 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { verifyRequestSession } from '@/lib/auth'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const session = await verifyRequestSession(request)
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = session.id
+
   try {
     const transactions = await prisma.transaction.findMany({
+      where: { user_id: userId },
       select: {
         id: true,
         date: true,
@@ -17,8 +25,7 @@ export async function GET() {
       orderBy: { date: 'desc' },
     })
 
-    // Find duplicates: same date + same amount + same notes (strict)
-    const seen = new Map<string, number>() // key → first tx id
+    const seen = new Map<string, number>()
     const duplicateIds = new Set<number>()
 
     for (const tx of transactions) {

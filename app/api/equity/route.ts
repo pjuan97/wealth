@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { verifyRequestSession } from '@/lib/auth'
 
 // Monthly rate from annual: (1 + annual)^(1/12) - 1
 function annualToMonthly(annual: number): number {
@@ -7,9 +8,10 @@ function annualToMonthly(annual: number): number {
 }
 
 // Get net flow from transactions for a given account + month
-async function getNetFlow(account: string, monthLabel: string): Promise<number> {
+async function getNetFlow(account: string, monthLabel: string, userId: number): Promise<number> {
   const txs = await prisma.transaction.findMany({
     where: {
+      user_id: userId,
       month_label: monthLabel,
       event_type: { in: ['Investment', 'Withdrawal'] },
       OR: [
@@ -35,16 +37,16 @@ async function getNetFlow(account: string, monthLabel: string): Promise<number> 
 async function getStartBalance(
   account: string,
   monthLabel: string,
-  baseEquity: number
+  baseEquity: number,
+  userId: number
 ): Promise<number> {
-  // Find previous month
   const [year, month] = monthLabel.split('-').map(Number)
   const prevMonth = month === 1
     ? `${year - 1}-12`
     : `${year}-${String(month - 1).padStart(2, '0')}`
 
   const prev = await prisma.equityExecuted.findFirst({
-    where: { platform: account, month_label: prevMonth },
+    where: { user_id: userId, platform: account, month_label: prevMonth },
   })
 
   if (prev?.market_value_end) return Number(prev.market_value_end)
@@ -52,6 +54,12 @@ async function getStartBalance(
 }
 
 export async function GET(request: NextRequest) {
+  const session = await verifyRequestSession(request)
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = session.id
+
   const { searchParams } = new URL(request.url)
   const view = searchParams.get('view')
   const month = searchParams.get('month')
@@ -60,9 +68,11 @@ export async function GET(request: NextRequest) {
     if (view === 'annual') {
       const [forecasts, executed] = await Promise.all([
         prisma.equityForecast.findMany({
+          where: { user_id: userId },
           orderBy: [{ month_label: 'asc' }, { account: 'asc' }],
         }),
         prisma.equityExecuted.findMany({
+          where: { user_id: userId },
           orderBy: [{ month_label: 'asc' }, { platform: 'asc' }],
         }),
       ])
@@ -79,8 +89,8 @@ export async function GET(request: NextRequest) {
 
           const annual_rate = Number(forecast.annual_rate)
           const monthly_rate = annualToMonthly(annual_rate)
-          const start_balance = await getStartBalance(account, m, Number(forecast.base_equity))
-          const net_flow = await getNetFlow(account, m)
+          const start_balance = await getStartBalance(account, m, Number(forecast.base_equity), userId)
+          const net_flow = await getNetFlow(account, m, userId)
           const expected_end = Math.round(start_balance * (1 + monthly_rate) + net_flow)
           const market_value_end = exec?.market_value_end ? Number(exec.market_value_end) : null
           const market_variance = market_value_end !== null ? market_value_end - expected_end : null
@@ -102,7 +112,6 @@ export async function GET(request: NextRequest) {
         }
       }))
 
-      // Portfolio totals by month
       const portfolioByMonth = months.map(m => {
         const projected = matrix.reduce((s, a) => {
           const md = a.months.find(x => x.month === m)
@@ -125,15 +134,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ matrix, months, portfolioByMonth })
     }
 
-    // ── MONTHLY VIEW ─────────────────────────────────────────────────────────
+    // MONTHLY VIEW
     const targetMonth = month || '2026-04'
     const [forecasts, executed] = await Promise.all([
       prisma.equityForecast.findMany({
-        where: { month_label: targetMonth },
+        where: { user_id: userId, month_label: targetMonth },
         orderBy: { account: 'asc' },
       }),
       prisma.equityExecuted.findMany({
-        where: { month_label: targetMonth },
+        where: { user_id: userId, month_label: targetMonth },
         orderBy: { platform: 'asc' },
       }),
     ])
@@ -142,8 +151,8 @@ export async function GET(request: NextRequest) {
       const exec = executed.find(e => e.platform === f.account)
       const annual_rate = Number(f.annual_rate)
       const monthly_rate = annualToMonthly(annual_rate)
-      const start_balance = await getStartBalance(f.account, targetMonth, Number(f.base_equity))
-      const net_flow = await getNetFlow(f.account, targetMonth)
+      const start_balance = await getStartBalance(f.account, targetMonth, Number(f.base_equity), userId)
+      const net_flow = await getNetFlow(f.account, targetMonth, userId)
       const expected_end = Math.round(start_balance * (1 + monthly_rate) + net_flow)
       const market_value_end = exec?.market_value_end ? Number(exec.market_value_end) : null
       const market_variance = market_value_end !== null ? market_value_end - expected_end : null
@@ -183,14 +192,24 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PATCH — update market_value_end OR annual_rate OR start_balance (Jan only)
+// PATCH - update market_value_end OR annual_rate OR start_balance (Jan only)
 export async function PATCH(request: NextRequest) {
+  const session = await verifyRequestSession(request)
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = session.id
+
   try {
     const body = await request.json()
     const { exec_id, forecast_id, market_value_end, annual_rate, base_equity } = body
 
     // Update Cierre Real
     if (exec_id !== undefined && market_value_end !== undefined) {
+      // Verify ownership
+      const existing = await prisma.equityExecuted.findFirst({ where: { id: exec_id, user_id: userId } })
+      if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
       const updated = await prisma.equityExecuted.update({
         where: { id: exec_id },
         data: { market_value_end: market_value_end !== null ? parseFloat(market_value_end) : null },
@@ -200,6 +219,9 @@ export async function PATCH(request: NextRequest) {
 
     // Update annual rate on forecast
     if (forecast_id !== undefined && annual_rate !== undefined) {
+      const existing = await prisma.equityForecast.findFirst({ where: { id: forecast_id, user_id: userId } })
+      if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
       const newMonthly = Math.pow(1 + parseFloat(annual_rate), 1 / 12) - 1
       const updated = await prisma.equityForecast.update({
         where: { id: forecast_id },
@@ -213,6 +235,9 @@ export async function PATCH(request: NextRequest) {
 
     // Update base_equity (start balance for Jan)
     if (forecast_id !== undefined && base_equity !== undefined) {
+      const existing = await prisma.equityForecast.findFirst({ where: { id: forecast_id, user_id: userId } })
+      if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
       const updated = await prisma.equityForecast.update({
         where: { id: forecast_id },
         data: { base_equity: parseFloat(base_equity) },

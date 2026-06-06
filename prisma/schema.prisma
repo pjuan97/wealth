@@ -7,8 +7,18 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id         Int      @id @default(autoincrement())
+  email      String   @unique @db.VarChar(255)
+  password   String   @db.VarChar(255)
+  name       String   @db.VarChar(100)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
 model Transaction {
   id           Int       @id @default(autoincrement())
+  user_id      Int?
   date         DateTime  @db.Date
   month_label  String    @db.VarChar(7)
   event_type   String    @db.VarChar(50)
@@ -43,6 +53,7 @@ model FxRate {
 
 model PlanVsAchievement {
   id           Int      @id @default(autoincrement())
+  user_id      Int?
   month_start  DateTime @db.Date
   month_label  String   @db.VarChar(7)
   event_type   String   @db.VarChar(20)
@@ -59,6 +70,7 @@ model PlanVsAchievement {
 
 model EquityForecast {
   id                   Int      @id @default(autoincrement())
+  user_id              Int?
   month_start          DateTime @db.Date
   month_label          String   @db.VarChar(7)
   equity_type          String   @db.VarChar(50)
@@ -76,6 +88,7 @@ model EquityForecast {
 
 model EquityExecuted {
   id               Int      @id @default(autoincrement())
+  user_id          Int?
   month_start      DateTime @db.Date
   month_label      String   @db.VarChar(7)
   equity_type      String   @db.VarChar(50)
@@ -104,15 +117,19 @@ model DailyFxRate {
 
 model AccountDef {
   id         Int      @id @default(autoincrement())
-  name       String   @unique @db.VarChar(100)
+  user_id    Int?
+  name       String   @db.VarChar(100)
   type       String   @db.VarChar(20)
   is_active  Boolean  @default(true)
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+
+  @@unique([name, user_id])
 }
 
 model CategoryDef {
   id         Int      @id @default(autoincrement())
+  user_id    Int?
   level_1    String   @db.VarChar(50)
   level_2    String   @db.VarChar(100)
   level_3    String?  @db.VarChar(100)
@@ -120,15 +137,18 @@ model CategoryDef {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  @@unique([level_1, level_2, level_3])
+  @@unique([level_1, level_2, level_3, user_id])
   @@index([level_1])
   @@index([level_2])
 }
 
 model EventTypeDef {
   id         Int      @id @default(autoincrement())
-  name       String   @unique @db.VarChar(50)
+  user_id    Int?
+  name       String   @db.VarChar(50)
   is_active  Boolean  @default(true)
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+
+  @@unique([name, user_id])
 }

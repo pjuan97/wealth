@@ -1,22 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { verifyRequestSession } from '@/lib/auth'
 
 // Get FX rate for a given date from DailyFxRate table
 async function getRateForDate(date: Date): Promise<number | null> {
-  // Try exact date first
   const exact = await prisma.dailyFxRate.findFirst({
     where: { date, currency: 'USD' },
   })
   if (exact) return Number(exact.rate_to_cop)
 
-  // Fall back to closest previous date
   const closest = await prisma.dailyFxRate.findFirst({
     where: { currency: 'USD', date: { lte: date } },
     orderBy: { date: 'desc' },
   })
   if (closest) return Number(closest.rate_to_cop)
 
-  // Fall back to monthly FX rate
   const monthLabel = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
   const monthly = await prisma.fxRate.findFirst({
     where: { month_label: monthLabel, currency: 'USD' },
@@ -27,10 +25,15 @@ async function getRateForDate(date: Date): Promise<number | null> {
 }
 
 export async function POST(request: NextRequest) {
+  const session = await verifyRequestSession(request)
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = session.id
+
   try {
     const body = await request.json()
     const { transactions } = body
-    // transactions: array of approved transaction objects
 
     if (!transactions?.length) {
       return NextResponse.json({ error: 'No transactions to import' }, { status: 400 })
@@ -44,13 +47,11 @@ export async function POST(request: NextRequest) {
         const txDate = new Date(tx.date)
         const monthLabel = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`
 
-        // Get FX rate for date
         let fxRate = tx.fx_rate ? parseFloat(tx.fx_rate) : null
         if (!fxRate) {
           fxRate = await getRateForDate(txDate)
         }
 
-        // Calculate COP amount from USD if needed
         let amount = tx.amount ? parseFloat(String(tx.amount)) : null
         const usdAmount = tx.usd_amount ? parseFloat(String(tx.usd_amount)) : null
         if (!amount && usdAmount && fxRate) {
@@ -64,6 +65,7 @@ export async function POST(request: NextRequest) {
 
         await prisma.transaction.create({
           data: {
+            user_id: userId,
             date: txDate,
             month_label: monthLabel,
             event_type: tx.event_type || 'Expense',

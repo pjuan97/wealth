@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { verifyRequestSession } from '@/lib/auth'
 
 const INVESTMENT_ACCOUNTS = [
   'Bancolombia Fiduciary', 'Trii', 'Dollar App', 'Tyba', 'Interactive Brokers',
@@ -20,11 +21,11 @@ const LIABILITY_ACCOUNTS = [
   'Loans',
 ]
 
-async function computeBalances(upToMonth?: string) {
-  // Get all transactions up to and including the given month
-  const where = upToMonth
-    ? { month_label: { lte: upToMonth } }
-    : {}
+async function computeBalances(userId: number, upToMonth?: string) {
+  const where = {
+    user_id: userId,
+    ...(upToMonth ? { month_label: { lte: upToMonth } } : {}),
+  }
 
   const transactions = await prisma.transaction.findMany({
     where,
@@ -35,7 +36,6 @@ async function computeBalances(upToMonth?: string) {
     },
   })
 
-  // Compute raw balance per account
   const balanceMap: Record<string, number> = {}
 
   for (const t of transactions) {
@@ -51,21 +51,28 @@ async function computeBalances(upToMonth?: string) {
   return balanceMap
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const session = await verifyRequestSession(request)
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = session.id
+
   try {
     // Current balances (all months)
-    const currentBalances = await computeBalances()
+    const currentBalances = await computeBalances(userId)
 
     // Get latest market_value_end for each investment account
     const latestEquity = await prisma.equityExecuted.findMany({
       where: {
+        user_id: userId,
         platform: { in: INVESTMENT_ACCOUNTS },
         market_value_end: { not: null },
       },
       orderBy: { month_label: 'desc' },
     })
 
-    // Build map: account → latest market_value_end
+    // Build map: account -> latest market_value_end
     const equityMap = new Map<string, number>()
     for (const e of latestEquity) {
       if (!equityMap.has(e.platform)) {
@@ -109,8 +116,8 @@ export async function GET() {
     const netWorth = totalAssets - totalLiabilities
 
     // Monthly net worth evolution
-    // Get distinct months present in transactions
     const monthsRaw = await prisma.transaction.findMany({
+      where: { user_id: userId },
       select: { month_label: true },
       distinct: ['month_label'],
       orderBy: { month_label: 'asc' },
@@ -122,7 +129,7 @@ export async function GET() {
 
     const monthlyNetWorth = await Promise.all(
       months.map(async (month) => {
-        const balances = await computeBalances(month)
+        const balances = await computeBalances(userId, month)
         const assets = ASSET_ACCOUNTS.reduce((s, name) => {
           const b = balances[name] || 0
           return s + (b > 0 ? b : 0)

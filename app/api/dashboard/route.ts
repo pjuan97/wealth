@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { verifyRequestSession } from '@/lib/auth'
 
 const MONTHS = [
   '2026-01','2026-02','2026-03','2026-04','2026-05','2026-06',
@@ -13,15 +14,20 @@ const MONTH_SHORT: Record<string, string> = {
 }
 
 export async function GET(request: NextRequest) {
+  const session = await verifyRequestSession(request)
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = session.id
+
   const { searchParams } = new URL(request.url)
   const section = searchParams.get('section') || 'overview'
   const month = searchParams.get('month') || '2026-04'
 
   try {
     if (section === 'overview') {
-      // Monthly summary: income, expense, balance, savings rate per month
       const transactions = await prisma.transaction.findMany({
-        where: { event_type: { in: ['Income', 'Expense'] } },
+        where: { user_id: userId, event_type: { in: ['Income', 'Expense'] } },
         select: { month_label: true, event_type: true, amount: true, level_2: true },
       })
 
@@ -34,7 +40,6 @@ export async function GET(request: NextRequest) {
         return { month: m, label: MONTH_SHORT[m], income, expense, balance, savingsRate }
       })
 
-      // YTD totals (months with data)
       const withData = monthlySummary.filter(m => m.income > 0 || m.expense > 0)
       const ytd = {
         income: withData.reduce((s, m) => s + m.income, 0),
@@ -45,7 +50,6 @@ export async function GET(request: NextRequest) {
       }
       ytd.savingsRate = ytd.income > 0 ? ytd.balance / ytd.income : 0
 
-      // Income by source
       const incomeBySource = MONTHS.map(m => {
         const mTxs = transactions.filter(t => t.month_label === m && t.event_type === 'Income')
         const salary = mTxs.filter(t => t.level_2 === 'Salary').reduce((s, t) => s + Number(t.amount), 0)
@@ -53,7 +57,6 @@ export async function GET(request: NextRequest) {
         return { month: m, label: MONTH_SHORT[m], salary, other }
       })
 
-      // Expense by category per month
       const expenseByCategory = MONTHS.map(m => {
         const mTxs = transactions.filter(t => t.month_label === m && t.event_type === 'Expense')
         const life = mTxs.filter(t => t.level_2 === 'Life').reduce((s, t) => s + Number(t.amount), 0)
@@ -63,9 +66,8 @@ export async function GET(request: NextRequest) {
         return { month: m, label: MONTH_SHORT[m], life, health, travels, others }
       })
 
-      // Latest net worth (from balances logic)
       const latestEquity = await prisma.equityExecuted.findMany({
-        where: { market_value_end: { not: null } },
+        where: { user_id: userId, market_value_end: { not: null } },
         orderBy: { month_label: 'desc' },
       })
       const equityMap = new Map<string, number>()
@@ -76,11 +78,11 @@ export async function GET(request: NextRequest) {
 
       const [cashInflow, cashOutflow] = await Promise.all([
         prisma.transaction.aggregate({
-          where: { to_account: 'Bancolombia (Cash)' },
+          where: { user_id: userId, to_account: 'Bancolombia (Cash)' },
           _sum: { amount: true },
         }),
         prisma.transaction.aggregate({
-          where: { from_account: 'Bancolombia (Cash)' },
+          where: { user_id: userId, from_account: 'Bancolombia (Cash)' },
           _sum: { amount: true },
         }),
       ])
@@ -95,10 +97,11 @@ export async function GET(request: NextRequest) {
     if (section === 'plan') {
       const [plans, transactions] = await Promise.all([
         prisma.planVsAchievement.findMany({
+          where: { user_id: userId },
           orderBy: [{ month_label: 'asc' }, { level_2: 'asc' }],
         }),
         prisma.transaction.findMany({
-          where: { event_type: { in: ['Income', 'Expense'] } },
+          where: { user_id: userId, event_type: { in: ['Income', 'Expense'] } },
           select: { month_label: true, event_type: true, level_2: true, level_3: true, amount: true },
         }),
       ])
@@ -133,11 +136,11 @@ export async function GET(request: NextRequest) {
     if (section === 'monthly') {
       const [plans, transactions] = await Promise.all([
         prisma.planVsAchievement.findMany({
-          where: { month_label: month },
+          where: { user_id: userId, month_label: month },
           orderBy: [{ event_type: 'asc' }, { level_2: 'asc' }, { level_3: 'asc' }],
         }),
         prisma.transaction.findMany({
-          where: { month_label: month, event_type: { in: ['Income', 'Expense'] } },
+          where: { user_id: userId, month_label: month, event_type: { in: ['Income', 'Expense'] } },
           select: { level_2: true, level_3: true, event_type: true, amount: true },
         }),
       ])
@@ -177,8 +180,14 @@ export async function GET(request: NextRequest) {
 
     if (section === 'equity') {
       const [forecasts, executed] = await Promise.all([
-        prisma.equityForecast.findMany({ orderBy: [{ month_label: 'asc' }, { account: 'asc' }] }),
-        prisma.equityExecuted.findMany({ orderBy: [{ month_label: 'asc' }, { platform: 'asc' }] }),
+        prisma.equityForecast.findMany({
+          where: { user_id: userId },
+          orderBy: [{ month_label: 'asc' }, { account: 'asc' }],
+        }),
+        prisma.equityExecuted.findMany({
+          where: { user_id: userId },
+          orderBy: [{ month_label: 'asc' }, { platform: 'asc' }],
+        }),
       ])
 
       const accounts = [...new Set(forecasts.map(f => f.account))].sort()

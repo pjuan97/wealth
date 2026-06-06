@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { verifyRequestSession } from '@/lib/auth'
 
 // Compute executed amounts from transactions
-async function computeExecuted(monthLabel: string) {
+async function computeExecuted(monthLabel: string, userId: number) {
   const transactions = await prisma.transaction.findMany({
     where: {
+      user_id: userId,
       month_label: monthLabel,
       event_type: { in: ['Income', 'Expense'] },
     },
@@ -18,8 +20,6 @@ async function computeExecuted(monthLabel: string) {
     const key3 = tx.level_3 || ''
     const keyFull = `${key2}||${key3}`
     map.set(keyFull, (map.get(keyFull) || 0) + Number(tx.amount))
-    // Also accumulate at level_2 level (for plan rows where level_3 IS NULL)
-    // Only when level_3 is non-empty to avoid double-counting
     if (key3 !== '') {
       const key2Only = `${key2}||`
       map.set(key2Only, (map.get(key2Only) || 0) + Number(tx.amount))
@@ -29,32 +29,35 @@ async function computeExecuted(monthLabel: string) {
   return map
 }
 
-// GET /api/plan?month=2026-01 → monthly view
-// GET /api/plan?view=annual   → all months summary
+// GET /api/plan?month=2026-01 -> monthly view
+// GET /api/plan?view=annual   -> all months summary
 export async function GET(request: NextRequest) {
+  const session = await verifyRequestSession(request)
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = session.id
+
   const { searchParams } = new URL(request.url)
   const month = searchParams.get('month')
   const view = searchParams.get('view')
 
   try {
     if (view === 'annual') {
-      // Get all plan rows
       const plans = await prisma.planVsAchievement.findMany({
+        where: { user_id: userId },
         orderBy: [{ month_label: 'asc' }, { event_type: 'asc' }, { level_2: 'asc' }],
       })
 
-      // Get all distinct months
       const months = [...new Set(plans.map(p => p.month_label))].sort()
 
-      // Compute executed for all months in parallel
       const executedByMonth = await Promise.all(
-        months.map(async m => ({ month: m, map: await computeExecuted(m) }))
+        months.map(async m => ({ month: m, map: await computeExecuted(m, userId) }))
       )
       const execMaps = Object.fromEntries(
         executedByMonth.map(({ month: m, map }) => [m, map])
       )
 
-      // Build annual summary: income vs expense by month
       const annualSummary = months.map(m => {
         const monthPlans = plans.filter(p => p.month_label === m)
         const execMap = execMaps[m] || new Map()
@@ -89,7 +92,6 @@ export async function GET(request: NextRequest) {
         }
       })
 
-      // Category breakdown for annual view
       const categoryKeys = [...new Set(
         plans.map(p => `${p.event_type}||${p.level_2}||${p.level_3 || ''}`)
       )].sort()
@@ -126,10 +128,10 @@ export async function GET(request: NextRequest) {
     const targetMonth = month || '2026-04'
     const [plans, execMap] = await Promise.all([
       prisma.planVsAchievement.findMany({
-        where: { month_label: targetMonth },
+        where: { user_id: userId, month_label: targetMonth },
         orderBy: [{ event_type: 'asc' }, { level_2: 'asc' }, { level_3: 'asc' }],
       }),
-      computeExecuted(targetMonth),
+      computeExecuted(targetMonth, userId),
     ])
 
     const rows = plans.map(p => {
@@ -151,7 +153,6 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Monthly totals
     const incomeRows = rows.filter(r => r.event_type === 'Income')
     const expenseRows = rows.filter(r => r.event_type === 'Expense')
 
@@ -169,13 +170,23 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PATCH /api/plan — update plan value for a row
+// PATCH /api/plan - update plan value for a row
 export async function PATCH(request: NextRequest) {
+  const session = await verifyRequestSession(request)
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = session.id
+
   try {
     const body = await request.json()
     const { id, base, plan } = body
 
     if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
+
+    // Verify ownership
+    const existing = await prisma.planVsAchievement.findFirst({ where: { id, user_id: userId } })
+    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     const updated = await prisma.planVsAchievement.update({
       where: { id },

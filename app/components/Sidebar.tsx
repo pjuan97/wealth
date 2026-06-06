@@ -1,7 +1,8 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import ThemeToggle from './ThemeToggle'
 
 const NAV_ITEMS = [
@@ -91,12 +92,27 @@ const NAV_ITEMS = [
   {
     href: '/data-source',
     label: 'Data Source',
-    icon: <span style={{ fontSize: '14px' }}>⚙️</span>,
+    icon: <span style={{ fontSize: '14px' }}>&#9881;</span>,
   },
 ]
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const [userName, setUserName] = useState<string>('')
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(data => setUserName(data.user?.name || ''))
+      .catch(() => {})
+  }, [])
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    router.push('/login')
+    router.refresh()
+  }
 
   return (
     <aside
@@ -181,10 +197,42 @@ export default function Sidebar() {
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-          Wealth v0.1
-        </span>
-        <ThemeToggle />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{
+            width: '24px', height: '24px',
+            borderRadius: '50%',
+            background: 'var(--accent-subtle)',
+            border: '1px solid var(--accent-border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '11px', fontWeight: 700, color: 'var(--accent)',
+          }}>
+            {userName?.charAt(0).toUpperCase()}
+          </div>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+            {userName}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          <ThemeToggle />
+          <button
+            onClick={handleLogout}
+            title="Sign out"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '4px',
+              color: 'var(--text-muted)',
+              fontSize: '14px',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </aside>
   )

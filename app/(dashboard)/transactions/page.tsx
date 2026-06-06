@@ -20,6 +20,23 @@ interface Transaction {
   notes: string | null
 }
 
+interface DuplicateGroup {
+  key: string
+  transactions: Array<{
+    id: number
+    date: string
+    event_type: string
+    level_2: string
+    level_3: string | null
+    amount: number
+    usd_amount: number | null
+    from_account: string | null
+    to_account: string | null
+    notes: string | null
+    month_label: string
+  }>
+}
+
 const MONTHS = [
   { key: '2026-01', label: 'January' },
   { key: '2026-02', label: 'February' },
@@ -90,6 +107,89 @@ const emptyFilters: Filters = {
   date: '', type: '', category: '', subcategory: '', from: '', to: '', notes: '',
 }
 
+function InlineEditCell({
+  value,
+  type = 'text',
+  options,
+  onSave,
+}: {
+  value: string | null
+  type?: 'text' | 'select' | 'number'
+  options?: string[]
+  onSave: (v: string | null) => Promise<void>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [raw, setRaw] = useState(value || '')
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    setSaving(true)
+    await onSave(raw || null)
+    setSaving(false)
+    setEditing(false)
+  }
+
+  const baseStyle: React.CSSProperties = {
+    background: 'var(--bg-elevated)',
+    border: '1px solid var(--accent-border)',
+    borderRadius: '4px',
+    padding: '3px 6px',
+    color: 'var(--text-primary)',
+    fontSize: '12px',
+    outline: 'none',
+    width: '100%',
+    minWidth: '80px',
+  }
+
+  if (!editing) {
+    return (
+      <span
+        onDoubleClick={() => { setRaw(value || ''); setEditing(true) }}
+        title="Double-click to edit"
+        style={{
+          cursor: 'text',
+          color: saving ? 'var(--text-muted)' : 'var(--text-primary)',
+          fontSize: '12px',
+          display: 'block',
+          minWidth: '60px',
+        }}
+      >
+        {value || '\u2014'}
+      </span>
+    )
+  }
+
+  if (type === 'select' && options) {
+    return (
+      <select
+        autoFocus
+        value={raw}
+        onChange={e => setRaw(e.target.value)}
+        onBlur={handleSave}
+        style={{ ...baseStyle, cursor: 'pointer' }}
+      >
+        <option value="">\u2014</option>
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    )
+  }
+
+  return (
+    <input
+      autoFocus
+      type={type}
+      value={raw}
+      onChange={e => setRaw(e.target.value)}
+      onBlur={handleSave}
+      onKeyDown={e => {
+        if (e.key === 'Enter') handleSave()
+        if (e.key === 'Escape') setEditing(false)
+      }}
+      style={baseStyle}
+    />
+  )
+}
+
 export default function TransactionsPage() {
   const [selectedMonth, setSelectedMonth] = useState('2026-04')
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -108,12 +208,67 @@ export default function TransactionsPage() {
   const [showDuplicates, setShowDuplicates] = useState(false)
   const [loadingDuplicates, setLoadingDuplicates] = useState(false)
   const [duplicateCount, setDuplicateCount] = useState(0)
+  const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([])
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false)
+
+  // ── Data Source options for inline editing ────────────────────────────────
+  const [dataSourceOptions, setDataSourceOptions] = useState<{
+    eventTypes: string[]
+    level2: string[]
+    accounts: string[]
+    level3ByLevel2: Record<string, string[]>
+  }>({
+    eventTypes: [],
+    level2: [],
+    accounts: [],
+    level3ByLevel2: {},
+  })
+
+  useEffect(() => {
+    fetch('/api/data-source').then(r => r.json()).then(data => {
+      const eventTypes = (data.eventTypes || [])
+        .filter((e: {is_active: boolean}) => e.is_active)
+        .map((e: {name: string}) => e.name)
+      const accounts = (data.accounts || [])
+        .filter((a: {is_active: boolean}) => a.is_active)
+        .map((a: {name: string}) => a.name)
+      const categories = data.categories || []
+      const level2 = [...new Set(categories.map((c: {level_2: string}) => c.level_2))] as string[]
+
+      const level3ByLevel2: Record<string, string[]> = {}
+      for (const cat of categories) {
+        if (!level3ByLevel2[cat.level_2]) level3ByLevel2[cat.level_2] = []
+        if (cat.level_3 && !level3ByLevel2[cat.level_2].includes(cat.level_3)) {
+          level3ByLevel2[cat.level_2].push(cat.level_3)
+        }
+      }
+
+      setDataSourceOptions({ eventTypes, level2, accounts, level3ByLevel2 })
+    }).catch(console.error)
+  }, [])
+
+  // ── Inline edit ───────────────────────────────────────────────────────────
+  const updateTransactionField = async (
+    txId: number,
+    field: string,
+    value: string | number | null
+  ) => {
+    await fetch(`/api/transactions`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: txId, [field]: value }),
+    })
+    setTransactions(prev => prev.map(tx =>
+      tx.id === txId ? { ...tx, [field]: value } : tx
+    ))
+  }
 
   const detectDuplicates = async () => {
     if (showDuplicates) {
       setShowDuplicates(false)
       setDuplicateIds(new Set())
       setDuplicateCount(0)
+      setDuplicateGroups([])
       return
     }
 
@@ -123,7 +278,9 @@ export default function TransactionsPage() {
       const data = await res.json()
       setDuplicateIds(new Set(data.duplicateIds))
       setDuplicateCount(data.pairs)
+      setDuplicateGroups(data.groups || [])
       setShowDuplicates(true)
+      if (data.pairs > 0) setShowDuplicateModal(true)
     } catch (err) {
       console.error(err)
     } finally {
@@ -770,54 +927,76 @@ export default function TransactionsPage() {
                     {formatDate(t.date)}
                   </td>
 
-                  {/* Type badge */}
-                  <td style={{ padding: '12px 12px' }}>
-                    <span
-                      style={{
-                        padding: '2px 8px',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        fontWeight: 500,
-                        whiteSpace: 'nowrap',
-                        ...(EVENT_BADGE_STYLE[t.event_type] || EVENT_BADGE_STYLE['Transfer']),
-                      }}
-                    >
-                      {t.event_type.replace(/_/g, ' ')}
-                    </span>
+                  {/* Type */}
+                  <td style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)' }}>
+                    <InlineEditCell
+                      value={t.event_type}
+                      type="select"
+                      options={dataSourceOptions.eventTypes}
+                      onSave={v => updateTransactionField(t.id, 'event_type', v)}
+                    />
                   </td>
 
-                  {/* Category */}
-                  <td style={{ padding: '12px 12px', color: 'var(--text-primary)', fontSize: '12px' }}>
-                    {t.level_2}
+                  {/* Category (level_2) */}
+                  <td style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)' }}>
+                    <InlineEditCell
+                      value={t.level_2}
+                      type="select"
+                      options={dataSourceOptions.level2}
+                      onSave={v => updateTransactionField(t.id, 'level_2', v)}
+                    />
                   </td>
 
-                  {/* Subcategory */}
-                  <td style={{ padding: '12px 12px', color: 'var(--text-primary)', fontSize: '12px' }}>
-                    {t.level_3 || '\u2014'}
+                  {/* Subcategory (level_3) */}
+                  <td style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)' }}>
+                    <InlineEditCell
+                      value={t.level_3}
+                      type="select"
+                      options={dataSourceOptions.level3ByLevel2[t.level_2 || ''] || []}
+                      onSave={v => updateTransactionField(t.id, 'level_3', v)}
+                    />
                   </td>
 
                   {/* From */}
-                  <td style={{ padding: '12px 12px', color: 'var(--text-primary)', fontSize: '12px' }}>
-                    {t.from_account || '\u2014'}
+                  <td style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)' }}>
+                    <InlineEditCell
+                      value={t.from_account}
+                      type="select"
+                      options={dataSourceOptions.accounts}
+                      onSave={v => updateTransactionField(t.id, 'from_account', v)}
+                    />
                   </td>
 
                   {/* To */}
-                  <td style={{ padding: '12px 12px', color: 'var(--text-primary)', fontSize: '12px' }}>
-                    {t.to_account || '\u2014'}
+                  <td style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)' }}>
+                    <InlineEditCell
+                      value={t.to_account}
+                      type="select"
+                      options={dataSourceOptions.accounts}
+                      onSave={v => updateTransactionField(t.id, 'to_account', v)}
+                    />
                   </td>
 
                   {/* Amount USD */}
-                  <td style={{ padding: '12px 12px', textAlign: 'right', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
-                    {formatUSD(usdVal)}
+                  <td style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>
+                    <InlineEditCell
+                      value={t.usd_amount ? String(t.usd_amount) : null}
+                      type="number"
+                      onSave={v => updateTransactionField(t.id, 'usd_amount', v ? parseFloat(v) : null)}
+                    />
                   </td>
 
                   {/* Amount COP */}
-                  <td style={{ padding: '12px 12px', textAlign: 'right', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-                    {formatCOP(copVal)}
+                  <td style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>
+                    <InlineEditCell
+                      value={t.amount ? String(t.amount) : null}
+                      type="number"
+                      onSave={v => updateTransactionField(t.id, 'amount', v ? parseFloat(v) : null)}
+                    />
                   </td>
 
                   {/* Notes */}
-                  <td style={{ padding: '12px 12px', color: 'var(--text-primary)', fontSize: '12px', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)', minWidth: '160px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       {showDuplicates && duplicateIds.has(t.id) && (
                         <span style={{
@@ -832,9 +1011,11 @@ export default function TransactionsPage() {
                           DUP
                         </span>
                       )}
-                      <span title={t.notes || ''} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {t.notes || '\u2014'}
-                      </span>
+                      <InlineEditCell
+                        value={t.notes}
+                        type="text"
+                        onSave={v => updateTransactionField(t.id, 'notes', v)}
+                      />
                     </div>
                   </td>
 
@@ -944,6 +1125,170 @@ export default function TransactionsPage() {
           </div>
         )}
       </div>
+
+      {/* Duplicate groups modal */}
+      {showDuplicateModal && duplicateGroups.length > 0 && (
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, padding: '24px',
+        }}>
+          <div style={{
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-strong)',
+            borderRadius: '16px',
+            width: '100%', maxWidth: '900px',
+            maxHeight: '85vh',
+            display: 'flex', flexDirection: 'column',
+            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex', alignItems: 'center',
+              justifyContent: 'space-between', flexShrink: 0,
+            }}>
+              <div>
+                <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                  Duplicate Transactions
+                </h3>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  {duplicateGroups.length} group{duplicateGroups.length !== 1 ? 's' : ''} found
+                  {' \u00B7 '}Matching on: same date + same amount + same notes
+                </p>
+              </div>
+              <button
+                onClick={() => setShowDuplicateModal(false)}
+                style={{
+                  background: 'transparent', border: 'none',
+                  color: 'var(--text-muted)', cursor: 'pointer',
+                  fontSize: '20px', lineHeight: 1, padding: '0 4px',
+                }}
+              >{'\u00D7'}</button>
+            </div>
+
+            {/* Groups */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {duplicateGroups.map((group, gi) => (
+                <div key={gi} style={{
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--accent-border)',
+                  borderRadius: '10px', overflow: 'hidden',
+                }}>
+                  <div style={{
+                    padding: '10px 16px',
+                    background: 'var(--accent-subtle)',
+                    borderBottom: '1px solid var(--accent-border)',
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                  }}>
+                    <span style={{
+                      padding: '2px 8px', borderRadius: '4px',
+                      fontSize: '10px', fontWeight: 700,
+                      background: 'var(--accent)', color: '#ffffff',
+                    }}>
+                      {group.transactions.length} duplicates
+                    </span>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                      &quot;{group.transactions[0].notes}&quot;
+                    </span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                      {new Date(group.transactions[0].date).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      {' \u00B7 '}{new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(Number(group.transactions[0].amount))}
+                    </span>
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr>
+                        {['ID', 'Date', 'Type', 'Category', 'Subcategory', 'Amount COP', 'USD', 'From', 'To'].map((h, i) => (
+                          <th key={h} style={{
+                            padding: '8px 12px', fontSize: '10px',
+                            fontWeight: 700, color: 'var(--text-muted)',
+                            textTransform: 'uppercase', letterSpacing: '0.04em',
+                            textAlign: i >= 5 ? 'right' : 'left',
+                            borderBottom: '1px solid var(--border)',
+                          }}>{h}</th>
+                        ))}
+                        <th style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', width: '80px' }} />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.transactions.map((tx, ti) => (
+                        <tr key={tx.id} style={{
+                          borderBottom: ti < group.transactions.length - 1 ? '1px solid var(--border)' : 'none',
+                          background: ti % 2 === 0 ? 'transparent' : 'rgba(148,163,184,0.03)',
+                        }}>
+                          <td style={{ padding: '8px 12px', fontSize: '11px', color: 'var(--text-muted)' }}>#{tx.id}</td>
+                          <td style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--text-primary)' }}>
+                            {new Date(tx.date).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
+                          </td>
+                          <td style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                            {tx.event_type?.replace(/_/g, ' ')}
+                          </td>
+                          <td style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--text-secondary)' }}>{tx.level_2}</td>
+                          <td style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--text-muted)' }}>{tx.level_3 || '\u2014'}</td>
+                          <td style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                            {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(Number(tx.amount))}
+                          </td>
+                          <td style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--text-secondary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                            {tx.usd_amount ? `${Number(tx.usd_amount).toFixed(2)}` : '\u2014'}
+                          </td>
+                          <td style={{ padding: '8px 12px', fontSize: '11px', color: 'var(--text-muted)' }}>{tx.from_account || '\u2014'}</td>
+                          <td style={{ padding: '8px 12px', fontSize: '11px', color: 'var(--text-muted)' }}>{tx.to_account || '\u2014'}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`Delete transaction #${tx.id}? This cannot be undone.`)) return
+                                await fetch(`/api/transactions?id=${tx.id}`, { method: 'DELETE' })
+                                setDuplicateGroups(prev => {
+                                  const updated = prev.map(g => ({
+                                    ...g,
+                                    transactions: g.transactions.filter(t => t.id !== tx.id),
+                                  })).filter(g => g.transactions.length >= 2)
+                                  return updated
+                                })
+                                await fetchTransactions(selectedMonth)
+                              }}
+                              style={{
+                                padding: '3px 10px', borderRadius: '4px',
+                                fontSize: '11px', fontWeight: 500,
+                                background: 'transparent',
+                                border: '1px solid var(--border-strong)',
+                                color: 'var(--text-muted)', cursor: 'pointer',
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              padding: '16px 24px', borderTop: '1px solid var(--border)',
+              display: 'flex', justifyContent: 'flex-end', flexShrink: 0,
+            }}>
+              <button
+                onClick={() => setShowDuplicateModal(false)}
+                style={{
+                  padding: '8px 20px', borderRadius: '8px',
+                  fontSize: '13px', fontWeight: 600,
+                  background: 'var(--accent)', color: '#ffffff',
+                  border: 'none', cursor: 'pointer',
+                }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Form slide-over */}
       <TransactionForm

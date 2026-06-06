@@ -109,6 +109,47 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function PATCH(request: NextRequest) {
+  const session = await verifyRequestSession(request)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  try {
+    const body = await request.json()
+    const { id, ...fields } = body
+
+    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+
+    // Whitelist of editable fields
+    const allowed = ['event_type', 'level_1', 'level_2', 'level_3', 'from_account', 'to_account', 'notes', 'amount', 'usd_amount']
+    const updateData: Record<string, string | number | null> = {}
+    for (const key of allowed) {
+      if (fields[key] !== undefined) {
+        updateData[key] = fields[key] === '' ? null : fields[key]
+      }
+    }
+
+    // Recalculate level_1 from level_2 if level_2 changes
+    if (updateData.level_2) {
+      const l2 = updateData.level_2 as string
+      if (['Salary', 'Other Incomes'].includes(l2)) updateData.level_1 = 'Income'
+      else if (['Life', 'Health', 'Travels', 'Others'].includes(l2)) updateData.level_1 = 'Expense'
+      else if (['Credit Cards', 'Loans'].includes(l2)) updateData.level_1 = 'Debt'
+      else if (['Fiduciary', 'ETFs', 'Collective Investment Funds', 'Companies', 'Bank (Cash)'].includes(l2)) updateData.level_1 = 'Equity'
+      else if (l2 === 'Financial Movement') updateData.level_1 = 'Financial Movement'
+    }
+
+    const updated = await prisma.transaction.update({
+      where: { id: parseInt(String(id)), user_id: session.id },
+      data: updateData,
+    })
+
+    return NextResponse.json(updated)
+  } catch (error) {
+    console.error('PATCH /api/transactions error:', error)
+    return NextResponse.json({ error: 'Failed to update' }, { status: 500 })
+  }
+}
+
 export async function DELETE(request: NextRequest) {
   const session = await verifyRequestSession(request)
   if (!session) {

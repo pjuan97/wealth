@@ -19,8 +19,11 @@ export async function GET(request: NextRequest) {
         notes: true,
         event_type: true,
         level_2: true,
+        level_3: true,
+        usd_amount: true,
         from_account: true,
         to_account: true,
+        month_label: true,
       },
       orderBy: { date: 'desc' },
     })
@@ -43,10 +46,30 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Build groups for the modal
+    const groups: Record<string, typeof transactions> = {}
+
+    for (const tx of transactions) {
+      const key = [
+        tx.date ? new Date(tx.date).toISOString().split('T')[0] : '',
+        String(tx.amount || ''),
+        (tx.notes || '').trim().toLowerCase(),
+      ].join('|')
+
+      if (!groups[key]) groups[key] = []
+      groups[key].push(tx)
+    }
+
+    // Only groups with 2+ transactions
+    const duplicateGroups = Object.entries(groups)
+      .filter(([, txs]) => txs.length >= 2)
+      .map(([key, txs]) => ({ key, transactions: txs }))
+
     return NextResponse.json({
       duplicateIds: Array.from(duplicateIds),
       count: duplicateIds.size,
       pairs: Math.floor(duplicateIds.size / 2),
+      groups: duplicateGroups,
     })
   } catch (error) {
     console.error('GET /api/transactions/duplicates error:', error)

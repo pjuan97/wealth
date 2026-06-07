@@ -101,16 +101,16 @@ export async function GET(request: NextRequest) {
         const monthly_rate = Number(latestForecast.monthly_rate)
         const start_balance = Number(latestExec.start_balance)
 
-        // Get net flow from transactions for this account's latest month
+        // Get net flow from ALL transactions for this account's latest month
         const netFlowTxs = await prisma.transaction.aggregate({
           where: {
             user_id: userId,
             month_label: latestExec.month_label,
-            event_type: { in: ['Investment', 'Withdrawal'] },
             OR: [
               { to_account: account },
               { from_account: account },
             ],
+            event_type: { notIn: ['Opening_Balance'] },
           },
           _sum: { amount: true },
         })

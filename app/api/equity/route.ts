@@ -9,25 +9,40 @@ function annualToMonthly(annual: number): number {
 
 // Get net flow from transactions for a given account + month
 async function getNetFlow(account: string, monthLabel: string, userId: number): Promise<number> {
+  // Get ALL transactions that involve this account in any direction
   const txs = await prisma.transaction.findMany({
     where: {
       user_id: userId,
       month_label: monthLabel,
-      event_type: { in: ['Investment', 'Withdrawal'] },
       OR: [
         { to_account: account },
         { from_account: account },
       ],
+      // Exclude Opening_Balance
+      event_type: {
+        notIn: ['Opening_Balance'],
+      },
     },
-    select: { event_type: true, amount: true, to_account: true, from_account: true },
+    select: {
+      event_type: true,
+      amount: true,
+      usd_amount: true,
+      to_account: true,
+      from_account: true,
+      fx_rate: true,
+    },
   })
 
   let net = 0
   for (const tx of txs) {
-    if (tx.event_type === 'Investment' && tx.to_account === account) {
-      net += Number(tx.amount)
-    } else if (tx.event_type === 'Withdrawal' && tx.from_account === account) {
-      net -= Number(tx.amount)
+    const amount = Number(tx.amount) || 0
+
+    if (tx.to_account === account) {
+      // Money flowing INTO the account
+      net += amount
+    } else if (tx.from_account === account) {
+      // Money flowing OUT of the account
+      net -= amount
     }
   }
   return net

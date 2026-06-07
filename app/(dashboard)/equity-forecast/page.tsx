@@ -584,18 +584,14 @@ export default function EquityForecastPage() {
                           {formatCOP(row.expected_end)}
                         </td>
 
-                        {/* Cierre Real — editable, with indicator if estimated */}
+                        {/* Cierre Real — always editable, badge est. when estimated */}
                         <td style={tdStyle()}>
-                          {row.is_estimated ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
-                              <span style={{
-                                fontSize: '11px',
-                                color: 'var(--text-secondary)',
-                                fontVariantNumeric: 'tabular-nums',
-                                fontStyle: 'italic',
-                              }}>
-                                {formatCOP(row.market_value_end || 0)}
-                              </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
+                            <EditableMarketValue
+                              value={row.market_value_end}
+                              onSave={v => updateMarketValue(row.exec_id!, v)}
+                            />
+                            {row.is_estimated && (
                               <span style={{
                                 fontSize: '9px',
                                 padding: '1px 5px',
@@ -604,16 +600,12 @@ export default function EquityForecastPage() {
                                 border: '1px solid var(--border-strong)',
                                 color: 'var(--text-muted)',
                                 fontWeight: 600,
+                                flexShrink: 0,
                               }}>
                                 est.
                               </span>
-                            </div>
-                          ) : (
-                            <EditableMarketValue
-                              value={row.market_value_end}
-                              onSave={v => updateMarketValue(row.exec_id!, v)}
-                            />
-                          )}
+                            )}
+                          </div>
                         </td>
 
                         {/* Market Variance */}

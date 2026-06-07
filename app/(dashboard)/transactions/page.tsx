@@ -37,6 +37,17 @@ interface DuplicateGroup {
   }>
 }
 
+const LEVEL2_BY_EVENT_TYPE: Record<string, string[]> = {
+  'Income': ['Salary', 'Other Incomes'],
+  'Expense': ['Life', 'Health', 'Travels', 'Others'],
+  'Transfer': ['Financial Movement'],
+  'Investment': ['Fiduciary', 'ETFs', 'Collective Investment Funds', 'Companies', 'Bank (Cash)'],
+  'Withdrawal': ['Fiduciary', 'ETFs', 'Collective Investment Funds', 'Companies', 'Bank (Cash)'],
+  'Debt_Payment': ['Credit Cards', 'Loans'],
+  'Debt_Increase': ['Credit Cards', 'Loans'],
+  'Opening_Balance': ['Fiduciary', 'ETFs', 'Collective Investment Funds', 'Companies', 'Bank (Cash)', 'Salary', 'Other Incomes'],
+}
+
 const MONTHS = [
   { key: '2026-01', label: 'January' },
   { key: '2026-02', label: 'February' },
@@ -937,13 +948,20 @@ export default function TransactionsPage() {
                     />
                   </td>
 
-                  {/* Category (level_2) */}
+                  {/* Category (level_2) — filtered by event_type */}
                   <td style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)' }}>
                     <InlineEditCell
                       value={t.level_2}
                       type="select"
-                      options={dataSourceOptions.level2}
-                      onSave={v => updateTransactionField(t.id, 'level_2', v)}
+                      options={LEVEL2_BY_EVENT_TYPE[t.event_type || ''] || dataSourceOptions.level2}
+                      onSave={async v => {
+                        await updateTransactionField(t.id, 'level_2', v)
+                        // Reset level_3 if not valid for new level_2
+                        const validL3 = dataSourceOptions.level3ByLevel2[v || ''] || []
+                        if (t.level_3 && !validL3.includes(t.level_3)) {
+                          await updateTransactionField(t.id, 'level_3', null)
+                        }
+                      }}
                     />
                   </td>
 

@@ -48,6 +48,16 @@ const LEVEL3_BY_LEVEL2: Record<string, string[]> = {
   'Debt': ['Credit Cards', 'Loans'],
   'Financial Movement': ['Financial Movement'],
 }
+const LEVEL2_BY_EVENT_TYPE: Record<string, string[]> = {
+  'Income': ['Salary', 'Other Incomes'],
+  'Expense': ['Life', 'Health', 'Travels', 'Others'],
+  'Transfer': ['Financial Movement'],
+  'Investment': ['Fiduciary', 'ETFs', 'Collective Investment Funds', 'Companies', 'Bank (Cash)'],
+  'Withdrawal': ['Fiduciary', 'ETFs', 'Collective Investment Funds', 'Companies', 'Bank (Cash)'],
+  'Debt_Payment': ['Credit Cards', 'Loans'],
+  'Debt_Increase': ['Credit Cards', 'Loans'],
+  'Opening_Balance': ['Fiduciary', 'ETFs', 'Collective Investment Funds', 'Companies', 'Bank (Cash)', 'Salary', 'Other Incomes'],
+}
 const STORAGE_KEY = 'wealth_ai_import_draft'
 const STORAGE_STEP_KEY = 'wealth_ai_import_step'
 
@@ -1079,8 +1089,8 @@ export default function AIImportPage() {
                       </th>
                       <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} onSort={handleSort} />
                       <SortableHeader label="Type" sortKey="event_type" currentSort={sortConfig} onSort={handleSort} />
-                      <SortableHeader label="Level 2" sortKey="level_2" currentSort={sortConfig} onSort={handleSort} />
-                      <SortableHeader label="Level 3" sortKey="level_3" currentSort={sortConfig} onSort={handleSort} />
+                      <SortableHeader label="Category" sortKey="level_2" currentSort={sortConfig} onSort={handleSort} />
+                      <SortableHeader label="Subcategory" sortKey="level_3" currentSort={sortConfig} onSort={handleSort} />
                       <SortableHeader label="Amount COP" sortKey="amount" currentSort={sortConfig} onSort={handleSort} align="right" />
                       <SortableHeader label="USD" sortKey="usd_amount" currentSort={sortConfig} onSort={handleSort} align="right" />
                       <th style={{
@@ -1147,15 +1157,35 @@ export default function AIImportPage() {
                         <td style={{ padding: '6px 8px', minWidth: '130px' }}>
                           <EditableCell value={tx.event_type} type="select" options={EVENT_TYPES} onChange={v => updateTx(tx.id, 'event_type', v)} />
                         </td>
-                        {/* Level 2 */}
-                        <td style={{ padding: '6px 8px', minWidth: '120px' }}>
-                          <EditableCell value={tx.level_2} type="select" options={LEVEL2_OPTIONS} onChange={v => {
-                            updateTx(tx.id, 'level_2', v)
-                            const validOptions = LEVEL3_BY_LEVEL2[v] || []
-                            if (!validOptions.includes(tx.level_3 || '')) {
-                              updateTx(tx.id, 'level_3', null)
-                            }
-                          }} />
+                        {/* Category (Level 2) — filtered by event_type */}
+                        <td style={{ padding: '6px 8px', minWidth: '140px' }}>
+                          <select
+                            value={tx.level_2 || ''}
+                            onChange={e => {
+                              updateTx(tx.id, 'level_2', e.target.value)
+                              // Reset level_3 if not valid for new level_2
+                              const validL3 = LEVEL3_BY_LEVEL2[e.target.value] || []
+                              if (!validL3.includes(tx.level_3 || '')) {
+                                updateTx(tx.id, 'level_3', null)
+                              }
+                            }}
+                            style={{
+                              background: 'var(--bg-elevated)',
+                              border: '1px solid var(--border)',
+                              borderRadius: '4px',
+                              padding: '3px 6px',
+                              color: 'var(--text-primary)',
+                              fontSize: '12px',
+                              outline: 'none',
+                              width: '100%',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <option value="">{'\u2014'}</option>
+                            {(LEVEL2_BY_EVENT_TYPE[tx.event_type] || LEVEL2_OPTIONS).map(o => (
+                              <option key={o} value={o}>{o}</option>
+                            ))}
+                          </select>
                         </td>
                         {/* Level 3 — dynamic dropdown based on level_2 */}
                         <td style={{ padding: '6px 8px', minWidth: '140px' }}>

@@ -9,23 +9,27 @@ import {
 interface AccountBalance {
   name: string
   balance: number
-  type: 'asset' | 'liability' | 'neutral'
+  balanceUsd: number
+  type: 'cash' | 'investment' | 'debt'
 }
 
 interface MonthlyPoint {
   month: string
   netWorth: number
-  assets: number
-  liabilities: number
+  assets?: number
+  liabilities?: number
 }
 
 interface BalancesData {
   accounts: AccountBalance[]
   totalAssets: number
+  totalAssetsUsd: number
   totalLiabilities: number
+  totalLiabilitiesUsd: number
   netWorth: number
-  monthlyNetWorth: MonthlyPoint[]
-  latestFxRate: number
+  netWorthUsd: number
+  netWorthEvolution: MonthlyPoint[]
+  fxRate: number
 }
 
 const MONTH_SHORT: Record<string, string> = {
@@ -139,11 +143,11 @@ export default function BalancesPage() {
 
   if (!data) return null
 
-  const fxRate = data.latestFxRate
-  const assets = data.accounts.filter(a => a.type === 'asset' && a.balance > 0)
-  const liabilities = data.accounts.filter(a => a.type === 'liability')
+  const fxRate = data.fxRate
+  const assets = data.accounts.filter(a => (a.type === 'cash' || a.type === 'investment') && a.balance > 0)
+  const liabilities = data.accounts.filter(a => a.type === 'debt' && a.balance < 0)
 
-  const chartDataRaw = data.monthlyNetWorth.map(p => ({
+  const chartDataRaw = (data.netWorthEvolution || []).map(p => ({
     ...p,
     displayLabel: MONTH_SHORT[p.month] || p.month,
   }))

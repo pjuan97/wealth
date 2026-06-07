@@ -21,6 +21,46 @@ export async function GET(request: NextRequest) {
       ...(month ? { month_label: month } : {}),
     }
 
+    // Summary for the selected month (all transactions, not paginated)
+    const summary = month ? await prisma.transaction.groupBy({
+      by: ['event_type'],
+      where: { ...where },
+      _sum: { amount: true, usd_amount: true },
+      _count: true,
+    }) : null
+
+    // Calculate totals from groupBy
+    let summaryTotals = null
+    if (summary) {
+      const income = summary
+        .filter(g => g.event_type === 'Income')
+        .reduce((s, g) => ({
+          amount: s.amount + Number(g._sum.amount || 0),
+          usd: s.usd + Number(g._sum.usd_amount || 0),
+          count: s.count + g._count,
+        }), { amount: 0, usd: 0, count: 0 })
+
+      const expense = summary
+        .filter(g => ['Expense', 'Debt_Payment', 'Debt_Increase'].includes(g.event_type))
+        .reduce((s, g) => ({
+          amount: s.amount + Number(g._sum.amount || 0),
+          usd: s.usd + Number(g._sum.usd_amount || 0),
+          count: s.count + g._count,
+        }), { amount: 0, usd: 0, count: 0 })
+
+      const totalCount = summary.reduce((s, g) => s + g._count, 0)
+
+      summaryTotals = {
+        income: income.amount,
+        incomeUsd: income.usd,
+        expense: expense.amount,
+        expenseUsd: expense.usd,
+        balance: income.amount - expense.amount,
+        balanceUsd: income.usd - expense.usd,
+        count: totalCount,
+      }
+    }
+
     const [transactions, fxRate] = await Promise.all([
       prisma.transaction.findMany({
         where,
@@ -42,6 +82,7 @@ export async function GET(request: NextRequest) {
       nextCursor,
       hasMore,
       fxRate: fxRate ? Number(fxRate.rate_to_cop) : null,
+      summary: summaryTotals,
     })
   } catch (error) {
     console.error('GET /api/transactions error:', error)

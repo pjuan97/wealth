@@ -208,6 +208,15 @@ export default function TransactionsPage() {
   const [nextCursor, setNextCursor] = useState<number | null>(null)
   const [hasMore, setHasMore] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [serverSummary, setServerSummary] = useState<{
+    income: number
+    incomeUsd: number
+    expense: number
+    expenseUsd: number
+    balance: number
+    balanceUsd: number
+    count: number
+  } | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [filters, setFilters] = useState<Filters>(emptyFilters)
@@ -309,7 +318,10 @@ export default function TransactionsPage() {
       setTransactions(prev => cursor ? [...prev, ...json.data] : json.data)
       setNextCursor(json.nextCursor)
       setHasMore(json.hasMore)
-      if (!cursor) setFxRate(json.fxRate)
+      if (!cursor) {
+        setFxRate(json.fxRate)
+        setServerSummary(json.summary || null)
+      }
     } catch (e) {
       console.error(e)
     } finally {
@@ -413,16 +425,23 @@ export default function TransactionsPage() {
     })
   }, [filtered, sortConfig])
 
-  // Totals (from filtered)
-  const incomeRows = filtered.filter(t => t.event_type === 'Income')
-  const expenseRows = filtered.filter(t => t.event_type === 'Expense')
+  // Totals: use server summary for full-month accuracy, fall back to local for filtered views
+  const useServerSummary = serverSummary && !hasActiveFilters
 
-  const totalIncomeCOP = incomeRows.reduce((s, t) => s + parseFloat(t.amount), 0)
-  const totalExpenseCOP = expenseRows.reduce((s, t) => s + parseFloat(t.amount), 0)
-  const totalIncomeUSD = incomeRows.reduce((s, t) => s + getUSD(t, fxRate), 0)
-  const totalExpenseUSD = expenseRows.reduce((s, t) => s + getUSD(t, fxRate), 0)
-  const balanceCOP = totalIncomeCOP - totalExpenseCOP
-  const balanceUSD = totalIncomeUSD - totalExpenseUSD
+  const localIncomeRows = filtered.filter(t => t.event_type === 'Income')
+  const localExpenseRows = filtered.filter(t => t.event_type === 'Expense')
+  const localIncomeCOP = localIncomeRows.reduce((s, t) => s + parseFloat(t.amount), 0)
+  const localExpenseCOP = localExpenseRows.reduce((s, t) => s + parseFloat(t.amount), 0)
+  const localIncomeUSD = localIncomeRows.reduce((s, t) => s + getUSD(t, fxRate), 0)
+  const localExpenseUSD = localExpenseRows.reduce((s, t) => s + getUSD(t, fxRate), 0)
+
+  const totalIncomeCOP = useServerSummary ? serverSummary.income : localIncomeCOP
+  const totalExpenseCOP = useServerSummary ? serverSummary.expense : localExpenseCOP
+  const totalIncomeUSD = useServerSummary ? serverSummary.incomeUsd : localIncomeUSD
+  const totalExpenseUSD = useServerSummary ? serverSummary.expenseUsd : localExpenseUSD
+  const balanceCOP = useServerSummary ? serverSummary.balance : (localIncomeCOP - localExpenseCOP)
+  const balanceUSD = useServerSummary ? serverSummary.balanceUsd : (localIncomeUSD - localExpenseUSD)
+  const totalCount = useServerSummary ? serverSummary.count : filtered.length
 
   const monthLabel = (MONTHS.find(m => m.key === selectedMonth)?.label || '') + ' 2026'
 
@@ -711,7 +730,7 @@ export default function TransactionsPage() {
             icon: '#',
             cop: null as number | null,
             usd: null as number | null,
-            count: filtered.length,
+            count: totalCount,
             accent: 'var(--text-muted)',
             borderColor: 'rgba(71,85,105,0.4)',
           },

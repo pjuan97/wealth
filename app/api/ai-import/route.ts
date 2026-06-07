@@ -139,7 +139,7 @@ async function callAnthropic(apiKey: string, images: string[], sourceType: 'cash
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 4096,
+      max_tokens: 16000,
       system: buildSystemPrompt(sourceType),
       messages: [{ role: 'user', content }],
     }),
@@ -154,7 +154,20 @@ async function callAnthropic(apiKey: string, images: string[], sourceType: 'cash
   }
 
   const data = await response.json()
-  return data.content[0].text
+
+  // Detect truncation
+  if (data.stop_reason === 'max_tokens') {
+    console.error('Response truncated at max_tokens — extracto demasiado largo')
+    throw new Error('RESPONSE_TRUNCATED')
+  }
+
+  if (!data.content?.[0]) {
+    console.error('No content in response:', JSON.stringify(data).substring(0, 500))
+    throw new Error('Empty response from Anthropic')
+  }
+
+  const text = data.content[0].text
+  return text
 }
 
 // Call Google Gemini API
@@ -319,10 +332,12 @@ export async function POST(request: NextRequest) {
         allTransactions.push(...transactions)
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Unknown error'
-        if (['INVALID_API_KEY', 'RATE_LIMIT_EXCEEDED', 'INSUFFICIENT_CREDITS'].includes(msg)) {
+        if (['INVALID_API_KEY', 'RATE_LIMIT_EXCEEDED', 'INSUFFICIENT_CREDITS', 'RESPONSE_TRUNCATED'].includes(msg)) {
           return NextResponse.json({
             error: msg,
-            errorMessage: msg === 'INVALID_API_KEY'
+            errorMessage: msg === 'RESPONSE_TRUNCATED'
+              ? 'El extracto tiene demasiadas transacciones. Intenta subir menos páginas a la vez (máx 2-3 páginas por batch).'
+              : msg === 'INVALID_API_KEY'
               ? 'Invalid API key. Please check and try again.'
               : msg === 'RATE_LIMIT_EXCEEDED'
               ? 'Rate limit exceeded. Please wait a moment and try again.'

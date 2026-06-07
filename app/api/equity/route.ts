@@ -154,7 +154,17 @@ export async function GET(request: NextRequest) {
       const start_balance = await getStartBalance(f.account, targetMonth, Number(f.base_equity), userId)
       const net_flow = await getNetFlow(f.account, targetMonth, userId)
       const expected_end = Math.round(start_balance * (1 + monthly_rate) + net_flow)
-      const market_value_end = exec?.market_value_end ? Number(exec.market_value_end) : null
+      // If manual value exists, use it; otherwise estimate from formula
+      const manual_value = exec?.market_value_end
+        ? Number(exec.market_value_end)
+        : null
+
+      const estimated_value = manual_value === null
+        ? Math.round(start_balance * (1 + monthly_rate) + net_flow)
+        : null
+
+      const market_value_end = manual_value ?? estimated_value
+      const is_estimated = manual_value === null
       const market_variance = market_value_end !== null ? market_value_end - expected_end : null
       const return_pct = start_balance > 0 ? ((expected_end - start_balance) / start_balance) * 100 : 0
 
@@ -169,6 +179,7 @@ export async function GET(request: NextRequest) {
         net_flow,
         expected_end,
         market_value_end,
+        is_estimated,
         market_variance,
         return_pct,
       }

@@ -62,21 +62,63 @@ export async function GET(request: NextRequest) {
     // Current balances (all months)
     const currentBalances = await computeBalances(userId)
 
-    // Get latest market_value_end for each investment account
-    const latestEquity = await prisma.equityExecuted.findMany({
+    // Get all equity executed rows (with and without market_value_end)
+    const allEquity = await prisma.equityExecuted.findMany({
       where: {
         user_id: userId,
         platform: { in: INVESTMENT_ACCOUNTS },
-        market_value_end: { not: null },
       },
       orderBy: { month_label: 'desc' },
     })
 
-    // Build map: account -> latest market_value_end
+    // Get equity forecast for monthly rate
+    const allForecast = await prisma.equityForecast.findMany({
+      where: {
+        user_id: userId,
+        account: { in: INVESTMENT_ACCOUNTS },
+      },
+      orderBy: { month_label: 'desc' },
+    })
+
+    // Build map: account -> latest market_value_end (manual or estimated)
     const equityMap = new Map<string, number>()
-    for (const e of latestEquity) {
-      if (!equityMap.has(e.platform)) {
-        equityMap.set(e.platform, Number(e.market_value_end))
+
+    for (const account of INVESTMENT_ACCOUNTS) {
+      // Try manual value first (most recent month with market_value_end)
+      const withManual = allEquity.find(
+        e => e.platform === account && e.market_value_end !== null
+      )
+      if (withManual) {
+        equityMap.set(account, Number(withManual.market_value_end))
+        continue
+      }
+
+      // Fallback: estimate from start_balance + net_flow + monthly_rate
+      const latestExec = allEquity.find(e => e.platform === account)
+      const latestForecast = allForecast.find(f => f.account === account)
+
+      if (latestExec && latestForecast) {
+        const monthly_rate = Number(latestForecast.monthly_rate)
+        const start_balance = Number(latestExec.start_balance)
+
+        // Get net flow from transactions for this account's latest month
+        const netFlowTxs = await prisma.transaction.aggregate({
+          where: {
+            user_id: userId,
+            month_label: latestExec.month_label,
+            event_type: { in: ['Investment', 'Withdrawal'] },
+            OR: [
+              { to_account: account },
+              { from_account: account },
+            ],
+          },
+          _sum: { amount: true },
+        })
+
+        const estimated = Math.round(
+          start_balance * (1 + monthly_rate) + Number(netFlowTxs._sum.amount || 0)
+        )
+        equityMap.set(account, estimated)
       }
     }
 
@@ -125,7 +167,7 @@ export async function GET(request: NextRequest) {
 
     const months = monthsRaw
       .map(r => r.month_label)
-      .filter(m => m !== null) as string[]
+      .filter(m => m !== null && m >= '2026-01') as string[]
 
     const monthlyNetWorth = await Promise.all(
       months.map(async (month) => {

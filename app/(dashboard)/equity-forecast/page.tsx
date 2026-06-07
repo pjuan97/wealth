@@ -14,6 +14,7 @@ interface EquityRow {
   net_flow: number
   expected_end: number
   market_value_end: number | null
+  is_estimated: boolean
   market_variance: number | null
   return_pct: number
 }
@@ -583,12 +584,36 @@ export default function EquityForecastPage() {
                           {formatCOP(row.expected_end)}
                         </td>
 
-                        {/* Cierre Real — editable */}
+                        {/* Cierre Real — editable, with indicator if estimated */}
                         <td style={tdStyle()}>
-                          <EditableMarketValue
-                            value={row.market_value_end}
-                            onSave={v => updateMarketValue(row.exec_id!, v)}
-                          />
+                          {row.is_estimated ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
+                              <span style={{
+                                fontSize: '11px',
+                                color: 'var(--text-secondary)',
+                                fontVariantNumeric: 'tabular-nums',
+                                fontStyle: 'italic',
+                              }}>
+                                {formatCOP(row.market_value_end || 0)}
+                              </span>
+                              <span style={{
+                                fontSize: '9px',
+                                padding: '1px 5px',
+                                borderRadius: '3px',
+                                background: 'var(--bg-elevated)',
+                                border: '1px solid var(--border-strong)',
+                                color: 'var(--text-muted)',
+                                fontWeight: 600,
+                              }}>
+                                est.
+                              </span>
+                            </div>
+                          ) : (
+                            <EditableMarketValue
+                              value={row.market_value_end}
+                              onSave={v => updateMarketValue(row.exec_id!, v)}
+                            />
+                          )}
                         </td>
 
                         {/* Market Variance */}

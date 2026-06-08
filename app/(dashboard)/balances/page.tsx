@@ -39,15 +39,19 @@ const MONTH_SHORT: Record<string, string> = {
   '2026-10': 'Oct', '2026-11': 'Nov', '2026-12': 'Dec',
 }
 
-const ACCOUNT_ICONS: Record<string, string> = {
-  'Bancolombia (Cash)': '🏦',
-  'Bancolombia Fiduciary': '📈',
-  'Credit Cards': '💳',
-  'Trii': '📊',
-  'Tyba': '💼',
-  'Dollar App': '💵',
-  'Loans': '🤝',
-  'Interactive Brokers': '🌐',
+function getAccountIcon(name: string, type: string): string {
+  const icons: Record<string, string> = {
+    'Bancolombia (Cash)': '🏦',
+    'Bancolombia Fiduciary': '📈',
+    'Dollar App (Cash)': '💵',
+    'Dollar App (ETFs)': '📊',
+    'Credit Cards': '💳',
+    'Trii': '📊',
+    'Tyba': '💼',
+    'Interactive Brokers': '🌐',
+    'Loans': '🤝',
+  }
+  return icons[name] || (type === 'cash' ? '🏦' : type === 'investment' ? '📈' : '💳')
 }
 
 function formatCOP(n: number) {
@@ -144,8 +148,15 @@ export default function BalancesPage() {
   if (!data) return null
 
   const fxRate = data.fxRate
-  const assets = data.accounts.filter(a => (a.type === 'cash' || a.type === 'investment') && a.balance > 0)
-  const liabilities = data.accounts.filter(a => a.type === 'debt' && a.balance < 0)
+  // Assets = cash + investment (balance positivo)
+  const assets = (data.accounts || []).filter(a =>
+    (a.type === 'cash' || a.type === 'investment') && a.balance >= 0
+  )
+
+  // Liabilities = debt accounts con balance negativo
+  const liabilities = (data.accounts || []).filter(a =>
+    a.type === 'debt' || a.balance < 0
+  )
 
   const chartDataRaw = (data.netWorthEvolution || []).map(p => ({
     ...p,
@@ -401,7 +412,7 @@ export default function BalancesPage() {
                   borderBottom: i < assets.length - 1 ? '1px solid var(--border)' : 'none',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '18px' }}>{ACCOUNT_ICONS[a.name] || '💰'}</span>
+                    <span style={{ fontSize: '18px' }}>{getAccountIcon(a.name, a.type)}</span>
                     <div>
                       <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)' }}>
                         {a.name}
@@ -468,7 +479,7 @@ export default function BalancesPage() {
                   borderBottom: i < liabilities.length - 1 ? '1px solid var(--border)' : 'none',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '18px' }}>{ACCOUNT_ICONS[a.name] || '💰'}</span>
+                    <span style={{ fontSize: '18px' }}>{getAccountIcon(a.name, a.type)}</span>
                     <div>
                       <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)' }}>
                         {a.name}

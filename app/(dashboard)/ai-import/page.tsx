@@ -206,6 +206,11 @@ export default function AIImportPage() {
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null)
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null)
 
+  // ── DB duplicate detection state ─────────────────────────────────────────
+  const [dbDuplicateIndices, setDbDuplicateIndices] = useState<Set<number>>(new Set())
+  const [dbDuplicateCount, setDbDuplicateCount] = useState(0)
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false)
+
   // ── Sort state ──────────────────────────────────────────────────────────────
   const [sortConfig, setSortConfig] = useState<{
     key: string
@@ -335,6 +340,39 @@ export default function AIImportPage() {
     }
   }
 
+  // ── Check duplicates against DB ───────────────────────────────────────────
+  const checkDuplicatesAgainstDB = async (txs: ExtractedTransaction[]) => {
+    setCheckingDuplicates(true)
+    try {
+      const res = await fetch('/api/ai-import/check-duplicates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactions: txs.map(tx => ({
+            date: tx.date,
+            amount: tx.amount,
+            usd_amount: tx.usd_amount,
+            notes: tx.notes,
+          })),
+        }),
+      })
+      const data = await res.json()
+      setDbDuplicateIndices(new Set(data.duplicateIndices || []))
+      setDbDuplicateCount(data.duplicateCount || 0)
+
+      // Auto-deselect DB duplicates
+      if (data.duplicateIndices?.length > 0) {
+        setTransactions(prev => prev.map((tx, i) =>
+          data.duplicateIndices.includes(i) ? { ...tx, approved: false } : tx
+        ))
+      }
+    } catch (e) {
+      console.error('Duplicate check failed:', e)
+    } finally {
+      setCheckingDuplicates(false)
+    }
+  }
+
   // ── File handling ──────────────────────────────────────────────────────────
   const addBatch = () => {
     const id = `batch_${Date.now()}`
@@ -425,6 +463,7 @@ export default function AIImportPage() {
       )
 
       setTransactions(extracted)
+      await checkDuplicatesAgainstDB(extracted)
       setStep('review')
 
       // Clear API key from memory after use
@@ -1032,6 +1071,8 @@ export default function AIImportPage() {
                     setTransactions([])
                     setFeedback('')
                     setDraftSavedAt(null)
+                    setDbDuplicateIndices(new Set())
+                    setDbDuplicateCount(0)
                     setStep('upload')
                   }}
                   style={{
@@ -1044,6 +1085,57 @@ export default function AIImportPage() {
                   }}
                 >
                   Discard draft
+                </button>
+              </div>
+            )}
+
+            {/* DB duplicate banners */}
+            {checkingDuplicates && (
+              <div style={{
+                padding: '10px 14px',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border)',
+                borderRadius: '8px',
+                fontSize: '12px', color: 'var(--text-muted)',
+                display: 'flex', alignItems: 'center', gap: '8px',
+              }}>
+                <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>&#9881;</span>
+                Checking for duplicates against existing transactions&hellip;
+              </div>
+            )}
+
+            {!checkingDuplicates && dbDuplicateCount > 0 && (
+              <div style={{
+                padding: '10px 14px',
+                background: 'rgba(249,115,22,0.06)',
+                border: '1px solid var(--accent-border)',
+                borderRadius: '8px',
+                fontSize: '12px',
+                display: 'flex', alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <span style={{ color: 'var(--accent)', fontWeight: 600 }}>
+                  &#9888; {dbDuplicateCount} transaction{dbDuplicateCount !== 1 ? 's' : ''} already exist in DB
+                  <span style={{ fontWeight: 400, color: 'var(--text-secondary)', marginLeft: '8px' }}>
+                    &middot; Auto-deselected. Review and re-select if needed.
+                  </span>
+                </span>
+                <button
+                  onClick={() => {
+                    // Re-select all DB duplicates if user wants to force import
+                    setTransactions(prev => prev.map((tx, i) =>
+                      dbDuplicateIndices.has(i) ? { ...tx, approved: true } : tx
+                    ))
+                    setDbDuplicateIndices(new Set())
+                    setDbDuplicateCount(0)
+                  }}
+                  style={{
+                    background: 'transparent', border: '1px solid var(--accent-border)',
+                    color: 'var(--accent)', borderRadius: '6px', padding: '3px 10px',
+                    fontSize: '11px', cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap',
+                  }}
+                >
+                  Re-select all
                 </button>
               </div>
             )}
@@ -1124,21 +1216,30 @@ export default function AIImportPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedTransactions.map(tx => (
+                    {sortedTransactions.map(tx => {
+                      const originalIndex = transactions.findIndex(t => t.id === tx.id)
+                      const isDbDuplicate = dbDuplicateIndices.has(originalIndex)
+                      const isBatchDuplicate = showDuplicates && duplicateIds.has(tx.id)
+
+                      const rowBg = isDbDuplicate
+                        ? 'rgba(71,85,105,0.15)'
+                        : isBatchDuplicate
+                        ? 'rgba(249, 115, 22, 0.08)'
+                        : tx.approved ? 'transparent' : 'rgba(71,85,105,0.1)'
+
+                      return (
                       <tr
                         key={tx.id}
                         style={{
                           borderBottom: '1px solid var(--border)',
-                          background: showDuplicates && duplicateIds.has(tx.id)
-                            ? 'rgba(249, 115, 22, 0.08)'
-                            : tx.approved ? 'transparent' : 'rgba(71,85,105,0.15)',
+                          background: rowBg,
                           opacity: tx.approved ? 1 : 0.5,
-                          outline: showDuplicates && duplicateIds.has(tx.id)
+                          outline: isBatchDuplicate
                             ? '1px solid var(--accent-border)'
                             : 'none',
                         }}
-                        onMouseEnter={e => { if (tx.approved) (e.currentTarget as HTMLElement).style.background = showDuplicates && duplicateIds.has(tx.id) ? 'rgba(249, 115, 22, 0.12)' : 'var(--bg-surface)' }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = showDuplicates && duplicateIds.has(tx.id) ? 'rgba(249, 115, 22, 0.08)' : tx.approved ? 'transparent' : 'rgba(71,85,105,0.15)' }}
+                        onMouseEnter={e => { if (tx.approved) (e.currentTarget as HTMLElement).style.background = isBatchDuplicate ? 'rgba(249, 115, 22, 0.12)' : 'var(--bg-surface)' }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = rowBg }}
                       >
                         {/* Checkbox */}
                         <td style={{ padding: '8px 10px', textAlign: 'center' }}>
@@ -1247,22 +1348,31 @@ export default function AIImportPage() {
                         </td>
                         {/* Notes */}
                         <td style={{ padding: '6px 8px', minWidth: '160px' }}>
-                          {showDuplicates && duplicateIds.has(tx.id) && (
-                            <span style={{
-                              display: 'inline-block',
-                              marginRight: '6px',
-                              padding: '1px 5px',
-                              borderRadius: '3px',
-                              fontSize: '9px',
-                              fontWeight: 700,
-                              background: 'var(--accent)',
-                              color: '#ffffff',
-                              verticalAlign: 'middle',
-                            }}>
-                              DUP
-                            </span>
-                          )}
-                          <EditableCell value={tx.notes} onChange={v => updateTx(tx.id, 'notes', v || null)} />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {isDbDuplicate && (
+                              <span style={{
+                                flexShrink: 0,
+                                padding: '1px 5px', borderRadius: '3px',
+                                fontSize: '9px', fontWeight: 700,
+                                background: 'var(--text-muted)',
+                                color: 'var(--bg-base)',
+                              }}>
+                                IN DB
+                              </span>
+                            )}
+                            {isBatchDuplicate && !isDbDuplicate && (
+                              <span style={{
+                                flexShrink: 0,
+                                padding: '1px 5px', borderRadius: '3px',
+                                fontSize: '9px', fontWeight: 700,
+                                background: 'var(--accent)',
+                                color: '#ffffff',
+                              }}>
+                                DUP
+                              </span>
+                            )}
+                            <EditableCell value={tx.notes} onChange={v => updateTx(tx.id, 'notes', v || null)} />
+                          </div>
                         </td>
                         {/* Apply to similar */}
                         <td style={{ padding: '6px 8px', textAlign: 'center', minWidth: '80px' }}>
@@ -1291,7 +1401,7 @@ export default function AIImportPage() {
                           })()}
                         </td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
             </div>
@@ -1343,6 +1453,8 @@ export default function AIImportPage() {
                   setError(null)
                   setImportResult(null)
                   setDraftSavedAt(null)
+                  setDbDuplicateIndices(new Set())
+                  setDbDuplicateCount(0)
                   setStep('upload')
                 }}
                 style={btnSecondary}

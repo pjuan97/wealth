@@ -8,53 +8,46 @@ export async function POST(request: NextRequest) {
 
   try {
     const { transactions } = await request.json()
-    // transactions: Array<{ date, amount, usd_amount, notes }>
-
     if (!transactions?.length) {
       return NextResponse.json({ duplicateIndices: [] })
     }
 
     // Get all existing transactions for this user
-    // Only fetch what we need for matching
     const existing = await prisma.transaction.findMany({
       where: { user_id: session.id },
-      select: {
-        date: true,
-        amount: true,
-        usd_amount: true,
-        notes: true,
-      },
+      select: { notes: true, month_label: true },
     })
 
-    // Build lookup set from existing transactions
-    // Key: date|amount|notes (strict match)
+    // Build lookup set: notes (normalized) + month_label
     const existingKeys = new Set(
-      existing.map(tx => {
-        const dateStr = tx.date
-          ? new Date(tx.date).toISOString().split('T')[0]
-          : ''
-        const amountStr = String(Number(tx.amount || tx.usd_amount || 0).toFixed(2))
-        const notesStr = (tx.notes || '').trim().toLowerCase()
-        return `${dateStr}|${amountStr}|${notesStr}`
-      })
+      existing
+        .filter(tx => tx.notes)
+        .map(tx => {
+          const notes = (tx.notes || '').trim().toLowerCase()
+          const month = tx.month_label || ''
+          return `${month}|${notes}`
+        })
     )
 
-    // Check each incoming transaction against existing
+    // Check each incoming transaction
     const duplicateIndices: number[] = []
 
     transactions.forEach((tx: {
       date?: string
-      amount?: number | string
-      usd_amount?: number | string
       notes?: string
     }, index: number) => {
-      const dateStr = tx.date
-        ? new Date(tx.date).toISOString().split('T')[0]
+      if (!tx.notes?.trim()) return // skip if no notes
+
+      // Extract month from date
+      const dateStr = tx.date || ''
+      const month = dateStr.length >= 7
+        ? dateStr.substring(0, 7) // '2026-05' from '2026-05-03'
         : ''
-      const amountVal = Number(tx.amount || tx.usd_amount || 0)
-      const amountStr = amountVal.toFixed(2)
-      const notesStr = (tx.notes || '').trim().toLowerCase()
-      const key = `${dateStr}|${amountStr}|${notesStr}`
+
+      if (!month) return
+
+      const notes = tx.notes.trim().toLowerCase()
+      const key = `${month}|${notes}`
 
       if (existingKeys.has(key)) {
         duplicateIndices.push(index)

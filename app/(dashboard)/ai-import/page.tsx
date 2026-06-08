@@ -1115,9 +1115,9 @@ export default function AIImportPage() {
                 justifyContent: 'space-between',
               }}>
                 <span style={{ color: 'var(--accent)', fontWeight: 600 }}>
-                  &#9888; {dbDuplicateCount} transaction{dbDuplicateCount !== 1 ? 's' : ''} already exist in DB
+                  &#9888; {dbDuplicateCount} transaction{dbDuplicateCount !== 1 ? 's' : ''} may already exist in DB
                   <span style={{ fontWeight: 400, color: 'var(--text-secondary)', marginLeft: '8px' }}>
-                    &middot; Auto-deselected. Review and re-select if needed.
+                    &middot; Matched by notes + month. Auto-deselected &mdash; review before importing.
                   </span>
                 </span>
                 <button

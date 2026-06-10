@@ -534,6 +534,10 @@ export default function AIImportPage() {
         body: JSON.stringify({ transactions: approved }),
       })
       const data = await res.json()
+      if (data.errors?.length > 0) {
+        console.error('Import errors:', data.errors)
+        alert(`Imported ${data.imported} of ${data.total}.\n\nSkipped:\n${data.errors.slice(0, 5).join('\n')}${data.errors.length > 5 ? `\n...and ${data.errors.length - 5} more` : ''}`)
+      }
       setImportResult(data)
       clearDraft()
       setStep('done')

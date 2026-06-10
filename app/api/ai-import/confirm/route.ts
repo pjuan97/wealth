@@ -4,22 +4,39 @@ import { verifyRequestSession } from '@/lib/auth'
 
 // Get FX rate for a given date from DailyFxRate table
 async function getRateForDate(date: Date): Promise<number | null> {
+  // 1. Exact daily rate
   const exact = await prisma.dailyFxRate.findFirst({
     where: { date, currency: 'USD' },
   })
   if (exact) return Number(exact.rate_to_cop)
 
-  const closest = await prisma.dailyFxRate.findFirst({
-    where: { currency: 'USD', date: { lte: date } },
+  // 2. Closest daily rate BEFORE the date
+  const before = await prisma.dailyFxRate.findFirst({
+    where: { date: { lt: date }, currency: 'USD' },
     orderBy: { date: 'desc' },
   })
-  if (closest) return Number(closest.rate_to_cop)
+  if (before) return Number(before.rate_to_cop)
 
-  const monthLabel = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+  // 3. Closest daily rate AFTER the date (covers dates before ingestion started)
+  const after = await prisma.dailyFxRate.findFirst({
+    where: { date: { gt: date }, currency: 'USD' },
+    orderBy: { date: 'asc' },
+  })
+  if (after) return Number(after.rate_to_cop)
+
+  // 4. Monthly reference rate for that month
+  const monthLabel = date.toISOString().substring(0, 7)
   const monthly = await prisma.fxRate.findFirst({
     where: { month_label: monthLabel, currency: 'USD' },
   })
   if (monthly) return Number(monthly.rate_to_cop)
+
+  // 5. ANY most recent monthly rate (last resort)
+  const anyMonthly = await prisma.fxRate.findFirst({
+    where: { currency: 'USD' },
+    orderBy: { month_label: 'desc' },
+  })
+  if (anyMonthly) return Number(anyMonthly.rate_to_cop)
 
   return null
 }

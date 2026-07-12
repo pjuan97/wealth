@@ -191,6 +191,24 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json(updated)
     }
 
+    if (type === 'account_import_config' && id) {
+      const existing = await prisma.accountDef.findFirst({ where: { id, user_id: userId } })
+      if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+      const importConfig = body.importConfig
+      const updated = await prisma.accountDef.update({
+        where: { id },
+        data: {
+          import_enabled: importConfig.import_enabled ?? false,
+          statement_currency: importConfig.statement_currency || null,
+          sign_logic: importConfig.sign_logic || null,
+          default_counterparty: importConfig.default_counterparty || null,
+          context_notes: importConfig.context_notes || null,
+        },
+      })
+      return NextResponse.json({ success: true, account: updated })
+    }
+
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
   } catch (error) {
     return NextResponse.json({ error: 'Failed to update' }, { status: 500 })

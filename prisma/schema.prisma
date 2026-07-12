@@ -124,6 +124,13 @@ model AccountDef {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
+  // Import configuration (Phase 1 — AI Import per account)
+  import_enabled       Boolean  @default(false)
+  statement_currency   String?  @db.VarChar(10)
+  sign_logic           String?  @db.VarChar(20)
+  default_counterparty String?  @db.VarChar(100)
+  context_notes        String?  @db.Text
+
   @@unique([name, user_id])
 }
 

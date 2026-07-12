@@ -2,11 +2,24 @@
 
 import { useState, useEffect } from 'react'
 
+interface ImportConfig {
+  import_enabled: boolean
+  statement_currency: string | null
+  sign_logic: string | null
+  default_counterparty: string | null
+  context_notes: string | null
+}
+
 interface AccountDef {
   id: number
   name: string
   type: string
   is_active: boolean
+  import_enabled: boolean
+  statement_currency: string | null
+  sign_logic: string | null
+  default_counterparty: string | null
+  context_notes: string | null
 }
 
 interface CategoryDef {
@@ -166,6 +179,16 @@ export default function DataSourcePage() {
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const [configAccount, setConfigAccount] = useState<AccountDef | null>(null)
+  const [configForm, setConfigForm] = useState<ImportConfig>({
+    import_enabled: false,
+    statement_currency: 'COP',
+    sign_logic: 'bank',
+    default_counterparty: null,
+    context_notes: null,
+  })
+  const [savingConfig, setSavingConfig] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -397,6 +420,161 @@ export default function DataSourcePage() {
         />
       )}
 
+      {configAccount && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '24px',
+        }}>
+          <div style={{
+            background: 'var(--bg-surface)', border: '1px solid var(--border-strong)',
+            borderRadius: '16px', width: '480px', maxHeight: '85vh', overflowY: 'auto',
+            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+          }}>
+            {/* Header */}
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                Import Configuration
+              </h3>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                {configAccount.name} &middot; How AI Import should read this account&apos;s statements
+              </p>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+
+              {/* Enable toggle */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={configForm.import_enabled}
+                  onChange={e => setConfigForm(p => ({ ...p, import_enabled: e.target.checked }))}
+                  style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Enable AI Import for this account
+                </span>
+              </label>
+
+              {configForm.import_enabled && (
+                <>
+                  {/* Statement currency */}
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+                      Statement Currency
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {['COP', 'USD'].map(c => (
+                        <button key={c} onClick={() => setConfigForm(p => ({ ...p, statement_currency: c }))} style={{
+                          flex: 1, padding: '8px', borderRadius: '8px', fontSize: '13px', fontWeight: 500,
+                          background: configForm.statement_currency === c ? 'var(--accent)' : 'transparent',
+                          color: configForm.statement_currency === c ? '#fff' : 'var(--text-secondary)',
+                          border: configForm.statement_currency === c ? 'none' : '1px solid var(--border-strong)',
+                          cursor: 'pointer',
+                        }}>{c}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Sign logic */}
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+                      Sign Logic
+                    </label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {[
+                        { key: 'bank', label: 'Bank account', sub: 'Negative = money out (expense), Positive = money in (income)' },
+                        { key: 'credit_card', label: 'Credit card', sub: 'Positive = charge (debt up), Negative = refund/payment (debt down)' },
+                      ].map(opt => (
+                        <div key={opt.key} onClick={() => setConfigForm(p => ({ ...p, sign_logic: opt.key }))} style={{
+                          padding: '10px 14px', borderRadius: '8px', cursor: 'pointer',
+                          border: configForm.sign_logic === opt.key ? '1px solid var(--accent-border)' : '1px solid var(--border)',
+                          background: configForm.sign_logic === opt.key ? 'var(--accent-subtle)' : 'transparent',
+                        }}>
+                          <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{opt.label}</p>
+                          <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{opt.sub}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Default counterparty */}
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+                      Default Account (from/to)
+                    </label>
+                    <select
+                      value={configForm.default_counterparty || ''}
+                      onChange={e => setConfigForm(p => ({ ...p, default_counterparty: e.target.value || null }))}
+                      style={{
+                        width: '100%', background: 'var(--bg-elevated)', border: '1px solid var(--border-strong)',
+                        borderRadius: '8px', padding: '9px 12px', color: 'var(--text-primary)', fontSize: '13px', outline: 'none',
+                      }}
+                    >
+                      <option value="">&mdash; none &mdash;</option>
+                      {accounts.filter(a => a.is_active).map(a => (
+                        <option key={a.id} value={a.name}>{a.name}</option>
+                      ))}
+                    </select>
+                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      Transactions from this statement will default to this account. The LLM can override for transfers.
+                    </p>
+                  </div>
+
+                  {/* Context notes */}
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+                      Context Notes (optional)
+                    </label>
+                    <textarea
+                      value={configForm.context_notes || ''}
+                      onChange={e => setConfigForm(p => ({ ...p, context_notes: e.target.value || null }))}
+                      placeholder="e.g. Transfers to Bancolombia say 'PAGO PROV'. Pix payments go to third parties directly."
+                      rows={3}
+                      style={{
+                        width: '100%', background: 'var(--bg-elevated)', border: '1px solid var(--border-strong)',
+                        borderRadius: '8px', padding: '9px 12px', color: 'var(--text-primary)', fontSize: '12px',
+                        outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit',
+                      }}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfigAccount(null)} style={{
+                padding: '8px 16px', borderRadius: '8px', fontSize: '13px',
+                background: 'transparent', border: '1px solid var(--border-strong)', color: 'var(--text-secondary)', cursor: 'pointer',
+              }}>Cancel</button>
+              <button
+                onClick={async () => {
+                  setSavingConfig(true)
+                  await fetch('/api/data-source', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      type: 'account_import_config',
+                      id: configAccount.id,
+                      importConfig: configForm,
+                    }),
+                  })
+                  setSavingConfig(false)
+                  setConfigAccount(null)
+                  await load()
+                }}
+                disabled={savingConfig}
+                style={{
+                  padding: '8px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+                  background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer',
+                }}
+              >{savingConfig ? 'Saving\u2026' : 'Save Config'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ flex: 1, overflowY: 'auto' }}>
 
         {showAdd && (
@@ -551,6 +729,27 @@ export default function DataSourcePage() {
                       <td style={tdStyle}><Badge label={acc.is_active ? 'Active' : 'Inactive'} color={acc.is_active ? 'orange' : 'default'} /></td>
                       <td style={{ ...tdStyle, textAlign: 'right', paddingRight: '32px' }}>
                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                          <button
+                            onClick={() => {
+                              setConfigAccount(acc)
+                              setConfigForm({
+                                import_enabled: acc.import_enabled ?? false,
+                                statement_currency: acc.statement_currency ?? 'COP',
+                                sign_logic: acc.sign_logic ?? 'bank',
+                                default_counterparty: acc.default_counterparty ?? acc.name,
+                                context_notes: acc.context_notes ?? null,
+                              })
+                            }}
+                            style={{
+                              padding: '4px 12px', borderRadius: '6px', fontSize: '12px',
+                              background: acc.import_enabled ? 'var(--accent-subtle)' : 'transparent',
+                              border: acc.import_enabled ? '1px solid var(--accent-border)' : '1px solid var(--border-strong)',
+                              color: acc.import_enabled ? 'var(--accent)' : 'var(--text-muted)',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {acc.import_enabled ? 'Import \u2713' : 'Configure Import'}
+                          </button>
                           <button onClick={() => { setEditingId(acc.id); setEditValue(acc.name) }} style={{
                             padding: '4px 12px', borderRadius: '6px', fontSize: '12px',
                             background: 'transparent', border: '1px solid var(--border-strong)',

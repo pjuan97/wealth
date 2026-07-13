@@ -3,10 +3,20 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface ImageBatch {
-  id: string
-  files: Array<{ name: string; base64: string; preview: string }>
-  sourceType: 'cash' | 'credit_card'
+interface UploadedFile {
+  name: string
+  base64: string
+  preview: string
+}
+
+interface ImportAccount {
+  id: number
+  name: string
+  type: string
+  statement_currency: string | null
+  sign_logic: string | null
+  default_counterparty: string | null
+  context_notes: string | null
 }
 
 interface ExtractedTransaction {
@@ -192,7 +202,10 @@ function SortableHeader({
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function AIImportPage() {
   const [step, setStep] = useState<Step>('upload')
-  const [batches, setBatches] = useState<ImageBatch[]>([])
+  const [files, setFiles] = useState<UploadedFile[]>([])
+  const [importAccounts, setImportAccounts] = useState<ImportAccount[]>([])
+  const [selectedAccount, setSelectedAccount] = useState<ImportAccount | null>(null)
+  const [loadingAccounts, setLoadingAccounts] = useState(false)
   const [apiKey, setApiKey] = useState('')
   const [apiKeyVisible, setApiKeyVisible] = useState(false)
   const [feedback, setFeedback] = useState('')
@@ -202,8 +215,7 @@ export default function AIImportPage() {
   const [importResult, setImportResult] = useState<{ imported: number; errors: string[] } | null>(null)
   const [provider, setProvider] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [dragOver, setDragOver] = useState<string | null>(null)
-  const [activeBatchId, setActiveBatchId] = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState(false)
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null)
 
   // ── DB duplicate detection state ─────────────────────────────────────────
@@ -293,6 +305,21 @@ export default function AIImportPage() {
     return dupes
   }, [transactions])
 
+  // ── Load import-enabled accounts on mount ──────────────────────────────────
+  useEffect(() => {
+    setLoadingAccounts(true)
+    fetch('/api/ai-import/accounts')
+      .then(r => r.json())
+      .then(data => {
+        setImportAccounts(data.accounts || [])
+        if (data.accounts?.length === 1) {
+          setSelectedAccount(data.accounts[0])
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoadingAccounts(false))
+  }, [])
+
   // ── localStorage draft persistence ─────────────────────────────────────────
   useEffect(() => {
     try {
@@ -374,14 +401,9 @@ export default function AIImportPage() {
   }
 
   // ── File handling ──────────────────────────────────────────────────────────
-  const addBatch = () => {
-    const id = `batch_${Date.now()}`
-    setBatches(prev => [...prev, { id, files: [], sourceType: 'cash' }])
-  }
-
-  const handleFiles = useCallback(async (batchId: string, files: FileList) => {
-    const newFiles: ImageBatch['files'] = []
-    for (const file of Array.from(files)) {
+  const handleFiles = useCallback(async (fileList: FileList) => {
+    const newFiles: UploadedFile[] = []
+    for (const file of Array.from(fileList)) {
       if (!file.type.startsWith('image/')) continue
       const base64 = await new Promise<string>((resolve) => {
         const reader = new FileReader()
@@ -397,19 +419,11 @@ export default function AIImportPage() {
         preview: URL.createObjectURL(file),
       })
     }
-    setBatches(prev => prev.map(b =>
-      b.id === batchId ? { ...b, files: [...b.files, ...newFiles] } : b
-    ))
+    setFiles(prev => [...prev, ...newFiles])
   }, [])
 
-  const removeBatch = (batchId: string) => {
-    setBatches(prev => prev.filter(b => b.id !== batchId))
-  }
-
-  const removeFile = (batchId: string, fileName: string) => {
-    setBatches(prev => prev.map(b =>
-      b.id === batchId ? { ...b, files: b.files.filter(f => f.name !== fileName) } : b
-    ))
+  const removeFile = (fileName: string) => {
+    setFiles(prev => prev.filter(f => f.name !== fileName))
   }
 
   // ── Detect provider from key ───────────────────────────────────────────────
@@ -430,10 +444,8 @@ export default function AIImportPage() {
       const payload = {
         apiKey,
         feedback: withFeedback ? feedback : null,
-        batches: batches.map(b => ({
-          sourceType: b.sourceType,
-          images: b.files.map(f => f.base64),
-        })),
+        accountConfig: selectedAccount,
+        images: files.map(f => f.base64),
       }
 
       const res = await fetch('/api/ai-import', {
@@ -593,8 +605,8 @@ export default function AIImportPage() {
         multiple
         style={{ display: 'none' }}
         onChange={e => {
-          if (e.target.files && activeBatchId) {
-            handleFiles(activeBatchId, e.target.files)
+          if (e.target.files) {
+            handleFiles(e.target.files)
           }
           e.target.value = ''
         }}
@@ -645,7 +657,7 @@ export default function AIImportPage() {
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
 
-        {/* ── STEP 1: UPLOAD ──────────────────────────────────────────────── */}
+        {/* ── STEP 1: ACCOUNT & UPLOAD ────────────────────────────────────── */}
         {step === 'upload' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '800px' }}>
             <div style={{
@@ -658,23 +670,93 @@ export default function AIImportPage() {
                 How it works
               </p>
               <ol style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.8, paddingLeft: '20px', margin: 0 }}>
-                <li>Add one or more image batches</li>
-                <li>For each batch, select the source type (Bank Cash or Credit Card)</li>
-                <li>Upload screenshots of your bank statements</li>
+                <li>Select which account&rsquo;s statement you&rsquo;re importing</li>
+                <li>Upload screenshots of that account&rsquo;s bank statement</li>
                 <li>Enter your API key (Anthropic, Google Gemini, or OpenAI)</li>
                 <li>Review extracted transactions and approve/edit</li>
               </ol>
             </div>
 
-            {/* Batches */}
-            {batches.map(batch => (
-              <div key={batch.id} style={{
+            {/* Account selector */}
+            <div style={{
+              background: 'var(--bg-surface)', border: '1px solid var(--border)',
+              borderRadius: '14px', padding: '24px',
+            }}>
+              <h3 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                Select Account
+              </h3>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px' }}>
+                Which account&rsquo;s statement are you importing?
+              </p>
+
+              {loadingAccounts ? (
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Loading accounts&hellip;</p>
+              ) : importAccounts.length === 0 ? (
+                <div style={{
+                  padding: '16px', borderRadius: '8px', background: 'var(--accent-subtle)',
+                  border: '1px solid var(--accent-border)',
+                }}>
+                  <p style={{ fontSize: '13px', color: 'var(--accent)', fontWeight: 600 }}>
+                    No accounts configured for import
+                  </p>
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    Go to Data Source &rarr; Accounts &rarr; Configure Import to enable accounts.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {importAccounts.map(acc => (
+                    <div
+                      key={acc.id}
+                      onClick={() => setSelectedAccount(acc)}
+                      style={{
+                        padding: '12px 16px', borderRadius: '10px', cursor: 'pointer',
+                        border: selectedAccount?.id === acc.id
+                          ? '1px solid var(--accent-border)'
+                          : '1px solid var(--border)',
+                        background: selectedAccount?.id === acc.id
+                          ? 'var(--accent-subtle)'
+                          : 'transparent',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{
+                          width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0,
+                          border: selectedAccount?.id === acc.id ? 'none' : '2px solid var(--border-strong)',
+                          background: selectedAccount?.id === acc.id ? 'var(--accent)' : 'transparent',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          {selectedAccount?.id === acc.id && (
+                            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#fff' }} />
+                          )}
+                        </div>
+                        <div>
+                          <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {acc.name}
+                          </p>
+                          <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                            {acc.statement_currency} &middot; {acc.sign_logic === 'bank' ? 'Bank account' : 'Credit card'} &middot; Default: {acc.default_counterparty || acc.name}
+                          </p>
+                        </div>
+                      </div>
+                      {selectedAccount?.id === acc.id && (
+                        <span style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 600 }}>&#10003; Selected</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Image upload — only show if account selected */}
+            {selectedAccount && (
+              <div style={{
                 background: 'var(--bg-surface)',
                 border: '1px solid var(--border)',
                 borderRadius: '14px',
                 overflow: 'hidden',
               }}>
-                {/* Batch header */}
                 <div style={{
                   padding: '14px 20px',
                   borderBottom: '1px solid var(--border)',
@@ -682,73 +764,36 @@ export default function AIImportPage() {
                   alignItems: 'center',
                   gap: '16px',
                 }}>
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    {(['cash', 'credit_card'] as const).map(type => (
-                      <button
-                        key={type}
-                        onClick={() => setBatches(prev => prev.map(b =>
-                          b.id === batch.id ? { ...b, sourceType: type } : b
-                        ))}
-                        style={{
-                          padding: '5px 14px',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          border: batch.sourceType === type ? '1px solid var(--accent-border)' : '1px solid var(--border)',
-                          background: batch.sourceType === type ? 'var(--accent-subtle)' : 'transparent',
-                          color: batch.sourceType === type ? 'var(--accent)' : 'var(--text-secondary)',
-                        }}
-                      >
-                        {type === 'cash' ? 'Bank Cash' : 'Credit Card'}
-                      </button>
-                    ))}
-                  </div>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                    {batch.files.length} image{batch.files.length !== 1 ? 's' : ''}
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Upload statement images
                   </span>
-                  <button
-                    onClick={() => removeBatch(batch.id)}
-                    style={{
-                      marginLeft: 'auto',
-                      background: 'transparent',
-                      border: '1px solid var(--border)',
-                      borderRadius: '6px',
-                      padding: '4px 10px',
-                      fontSize: '11px',
-                      color: 'var(--text-muted)',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Remove
-                  </button>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    {files.length} image{files.length !== 1 ? 's' : ''}
+                  </span>
                 </div>
 
                 {/* Drop zone */}
                 <div
-                  onDragOver={e => { e.preventDefault(); setDragOver(batch.id) }}
-                  onDragLeave={() => setDragOver(null)}
+                  onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                  onDragLeave={() => setDragOver(false)}
                   onDrop={e => {
                     e.preventDefault()
-                    setDragOver(null)
-                    if (e.dataTransfer.files.length) handleFiles(batch.id, e.dataTransfer.files)
+                    setDragOver(false)
+                    if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files)
                   }}
-                  onClick={() => {
-                    setActiveBatchId(batch.id)
-                    fileInputRef.current?.click()
-                  }}
+                  onClick={() => fileInputRef.current?.click()}
                   style={{
                     padding: '24px',
                     textAlign: 'center',
                     cursor: 'pointer',
-                    background: dragOver === batch.id ? 'var(--accent-subtle)' : 'transparent',
-                    border: dragOver === batch.id ? '2px dashed var(--accent)' : '2px dashed transparent',
+                    background: dragOver ? 'var(--accent-subtle)' : 'transparent',
+                    border: dragOver ? '2px dashed var(--accent)' : '2px dashed transparent',
                     margin: '8px',
                     borderRadius: '8px',
                     transition: 'all 0.15s',
                   }}
                 >
-                  {batch.files.length === 0 ? (
+                  {files.length === 0 ? (
                     <>
                       <p style={{ fontSize: '24px', marginBottom: '8px' }}>&#128248;</p>
                       <p style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 600 }}>
@@ -760,7 +805,7 @@ export default function AIImportPage() {
                     </>
                   ) : (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: 'center' }}>
-                      {batch.files.map(file => (
+                      {files.map(file => (
                         <div key={file.name} style={{ position: 'relative' }}>
                           <img
                             src={file.preview}
@@ -773,7 +818,7 @@ export default function AIImportPage() {
                             }}
                           />
                           <button
-                            onClick={e => { e.stopPropagation(); removeFile(batch.id, file.name) }}
+                            onClick={e => { e.stopPropagation(); removeFile(file.name) }}
                             style={{
                               position: 'absolute', top: '-6px', right: '-6px',
                               width: '18px', height: '18px',
@@ -802,18 +847,22 @@ export default function AIImportPage() {
                   )}
                 </div>
               </div>
-            ))}
+            )}
 
-            {/* Add batch + Continue */}
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button onClick={addBatch} style={btnSecondary}>
-                + Add Image Batch
+            {/* Continue */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setStep('apikey')}
+                disabled={!selectedAccount || files.length === 0}
+                style={{
+                  ...btnPrimary,
+                  background: (!selectedAccount || files.length === 0) ? 'var(--bg-elevated)' : 'var(--accent)',
+                  color: (!selectedAccount || files.length === 0) ? 'var(--text-muted)' : '#ffffff',
+                  cursor: (!selectedAccount || files.length === 0) ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Continue &rarr;
               </button>
-              {batches.length > 0 && batches.some(b => b.files.length > 0) && (
-                <button onClick={() => setStep('apikey')} style={btnPrimary}>
-                  Continue &rarr;
-                </button>
-              )}
             </div>
           </div>
         )}
@@ -1071,7 +1120,8 @@ export default function AIImportPage() {
                 <button
                   onClick={() => {
                     clearDraft()
-                    setBatches([])
+                    setFiles([])
+                    setSelectedAccount(null)
                     setTransactions([])
                     setFeedback('')
                     setDraftSavedAt(null)
@@ -1451,7 +1501,8 @@ export default function AIImportPage() {
               <button
                 onClick={() => {
                   clearDraft()
-                  setBatches([])
+                  setFiles([])
+                  setSelectedAccount(null)
                   setTransactions([])
                   setFeedback('')
                   setError(null)

@@ -33,6 +33,15 @@ interface ExtractedTransaction {
   to_account: string | null
   notes: string | null
   editing: boolean
+  comparison?: PassComparison
+}
+
+interface PassComparison {
+  conflictFields: string[]  // ['amount', 'level_2', ...]
+  p1: Partial<ExtractedTransaction>
+  p2: Partial<ExtractedTransaction>
+  matchStatus: 'match' | 'conflict' | 'only_p1' | 'only_p2'
+  resolved: boolean
 }
 
 type Step = 'upload' | 'apikey' | 'analyzing' | 'review' | 'done'
@@ -105,6 +114,110 @@ function areSimilar(notesA: string, notesB: string): boolean {
   if (sharedTokenCount(a, b) >= 2) return true
   if (a.length >= 8 && b.length >= 8 && a.slice(0, 8) === b.slice(0, 8)) return true
   return false
+}
+
+// ─── Dual-pass merge ────────────────────────────────────────────────────────
+const COMPARE_FIELDS = ['event_type', 'level_2', 'level_3', 'amount', 'usd_amount', 'from_account', 'to_account']
+
+function mergePasses(p1: ExtractedTransaction[], p2: ExtractedTransaction[]): ExtractedTransaction[] {
+  // Pair by date + notes (normalized)
+  const keyOf = (tx: ExtractedTransaction) =>
+    `${tx.date || ''}|${(tx.notes || '').trim().toLowerCase()}`
+
+  const p2Map = new Map<string, ExtractedTransaction>()
+  const p2Used = new Set<string>()
+  for (const tx of p2) {
+    const k = keyOf(tx)
+    if (!p2Map.has(k)) p2Map.set(k, tx)
+  }
+
+  const result: ExtractedTransaction[] = []
+
+  // Process P1 transactions
+  for (const tx1 of p1) {
+    const k = keyOf(tx1)
+    const tx2 = p2Map.get(k)
+
+    if (!tx2) {
+      // Only in P1
+      result.push({
+        ...tx1,
+        approved: false,
+        comparison: {
+          conflictFields: [],
+          p1: tx1,
+          p2: {},
+          matchStatus: 'only_p1',
+          resolved: false,
+        },
+      })
+      continue
+    }
+
+    p2Used.add(k)
+
+    // Compare fields
+    const conflictFields: string[] = []
+    for (const field of COMPARE_FIELDS) {
+      const v1 = tx1[field as keyof ExtractedTransaction]
+      const v2 = tx2[field as keyof ExtractedTransaction]
+      // Normalize numbers for comparison
+      const n1 = typeof v1 === 'number' || (typeof v1 === 'string' && v1 !== '' && !isNaN(Number(v1))) ? Number(v1) : v1
+      const n2 = typeof v2 === 'number' || (typeof v2 === 'string' && v2 !== '' && !isNaN(Number(v2))) ? Number(v2) : v2
+      if (String(n1 ?? '') !== String(n2 ?? '')) {
+        conflictFields.push(field)
+      }
+    }
+
+    if (conflictFields.length === 0) {
+      // Perfect match
+      result.push({
+        ...tx1,
+        approved: true,
+        comparison: {
+          conflictFields: [],
+          p1: tx1,
+          p2: tx2,
+          matchStatus: 'match',
+          resolved: true,
+        },
+      })
+    } else {
+      // Conflict — auto-deselect
+      result.push({
+        ...tx1,
+        approved: false,
+        comparison: {
+          conflictFields,
+          p1: tx1,
+          p2: tx2,
+          matchStatus: 'conflict',
+          resolved: false,
+        },
+      })
+    }
+  }
+
+  // Process P2 transactions that weren't matched (only in P2)
+  for (const tx2 of p2) {
+    const k = keyOf(tx2)
+    if (!p2Used.has(k)) {
+      result.push({
+        ...tx2,
+        id: `tx2-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        approved: false,
+        comparison: {
+          conflictFields: [],
+          p1: {},
+          p2: tx2,
+          matchStatus: 'only_p2',
+          resolved: false,
+        },
+      })
+    }
+  }
+
+  return result
 }
 
 // ─── Editable cell ────────────────────────────────────────────────────────────
@@ -216,6 +329,11 @@ export default function AIImportPage() {
   const [provider, setProvider] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
+
+  // ── Dual-pass analysis state ────────────────────────────────────────────────
+  const [passCount, setPassCount] = useState<1 | 2>(1)
+  const [showPassModal, setShowPassModal] = useState(false)
+  const [resolvingTx, setResolvingTx] = useState<ExtractedTransaction | null>(null)
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null)
 
   // ── DB duplicate detection state ─────────────────────────────────────────
@@ -435,54 +553,61 @@ export default function AIImportPage() {
   }
 
   // ── Run analysis ───────────────────────────────────────────────────────────
-  const runAnalysis = async (withFeedback = false) => {
+  // Single extraction pass — one fetch to /api/ai-import.
+  const runSinglePass = async (): Promise<{ transactions: ExtractedTransaction[]; provider: string; count: number }> => {
+    const res = await fetch('/api/ai-import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        apiKey,
+        images: files.map(f => f.base64),
+        accountConfig: selectedAccount,
+        feedback: feedback || undefined,
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.errorMessage || data.error || 'Analysis failed')
+    return {
+      transactions: (data.transactions || []).map(
+        (tx: Omit<ExtractedTransaction, 'id' | 'approved' | 'editing'>, i: number) => ({
+          ...tx,
+          id: `tx-${Date.now()}-${i}`,
+          approved: true,
+          editing: false,
+        })
+      ),
+      provider: data.provider,
+      count: data.count,
+    }
+  }
+
+  const runAnalysis = async (passes: 1 | 2 = 1) => {
     setAnalyzing(true)
     setError(null)
     setStep('analyzing')
 
     try {
-      const payload = {
-        apiKey,
-        feedback: withFeedback ? feedback : null,
-        accountConfig: selectedAccount,
-        images: files.map(f => f.base64),
+      if (passes === 1) {
+        // Single pass — original behavior
+        const result = await runSinglePass()
+        setProvider(result.provider)
+        setTransactions(result.transactions)
+        await checkDuplicatesAgainstDB(result.transactions)
+      } else {
+        // Double pass — run in PARALLEL, then pair & compare
+        const [pass1, pass2] = await Promise.all([runSinglePass(), runSinglePass()])
+        setProvider(pass1.provider)
+        const merged = mergePasses(pass1.transactions, pass2.transactions)
+        setTransactions(merged)
+        await checkDuplicatesAgainstDB(merged)
       }
-
-      const res = await fetch('/api/ai-import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        setError(data.errorMessage || 'Analysis failed')
-        setStep(withFeedback ? 'review' : 'apikey')
-        return
-      }
-
-      setProvider(data.provider)
-
-      // Transform to editable transactions
-      const extracted: ExtractedTransaction[] = (data.transactions || []).map(
-        (tx: Omit<ExtractedTransaction, 'id' | 'approved' | 'editing'>, i: number) => ({
-          ...tx,
-          id: `tx_${i}_${Date.now()}`,
-          approved: true,
-          editing: false,
-        })
-      )
-
-      setTransactions(extracted)
-      await checkDuplicatesAgainstDB(extracted)
       setStep('review')
 
       // Clear API key from memory after use
       setApiKey('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Network error')
-      setStep(withFeedback ? 'review' : 'apikey')
+      setStep(feedback ? 'review' : 'apikey')
     } finally {
       setAnalyzing(false)
     }
@@ -611,6 +736,156 @@ export default function AIImportPage() {
           e.target.value = ''
         }}
       />
+
+      {/* ── Pass-count selection modal ─────────────────────────────────────── */}
+      {showPassModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+        }}>
+          <div style={{
+            background: 'var(--bg-surface)', border: '1px solid var(--border-strong)',
+            borderRadius: '16px', padding: '28px 32px', width: '440px',
+            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+          }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
+              Analysis Accuracy
+            </h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
+              Running the analysis twice helps catch OCR errors in amounts and categories.
+              Mismatches between passes will be highlighted for you to resolve.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '24px' }}>
+              {([
+                { n: 1 as const, label: 'Single pass', sub: 'Faster · standard API cost' },
+                { n: 2 as const, label: 'Double pass (recommended)', sub: 'Higher accuracy · 2x API cost · runs in parallel' },
+              ]).map(opt => (
+                <div key={opt.n} onClick={() => setPassCount(opt.n)} style={{
+                  padding: '14px 16px', borderRadius: '10px', cursor: 'pointer',
+                  border: passCount === opt.n ? '1px solid var(--accent-border)' : '1px solid var(--border)',
+                  background: passCount === opt.n ? 'var(--accent-subtle)' : 'transparent',
+                  display: 'flex', alignItems: 'center', gap: '12px',
+                }}>
+                  <div style={{
+                    width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0,
+                    border: passCount === opt.n ? 'none' : '2px solid var(--border-strong)',
+                    background: passCount === opt.n ? 'var(--accent)' : 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {passCount === opt.n && <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#fff' }} />}
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{opt.label}</p>
+                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{opt.sub}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowPassModal(false)} style={{
+                padding: '8px 16px', borderRadius: '8px', fontSize: '13px',
+                background: 'transparent', border: '1px solid var(--border-strong)',
+                color: 'var(--text-secondary)', cursor: 'pointer',
+              }}>Cancel</button>
+              <button onClick={() => { setShowPassModal(false); runAnalysis(passCount) }} style={{
+                padding: '8px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+                background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer',
+              }}>Run Analysis</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Conflict resolution modal ──────────────────────────────────────── */}
+      {resolvingTx && resolvingTx.comparison && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '24px',
+        }}>
+          <div style={{
+            background: 'var(--bg-surface)', border: '1px solid var(--border-strong)',
+            borderRadius: '16px', width: '520px', maxHeight: '85vh', overflowY: 'auto',
+            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+          }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                Resolve Conflict
+              </h3>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                {resolvingTx.date} &middot; {resolvingTx.notes} &middot; The two analysis passes disagree on these fields
+              </p>
+            </div>
+
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {resolvingTx.comparison.conflictFields.map(field => {
+                const labels: Record<string, string> = {
+                  event_type: 'Type', level_2: 'Category', level_3: 'Subcategory',
+                  amount: 'Amount COP', usd_amount: 'Amount USD',
+                  from_account: 'From', to_account: 'To',
+                }
+                const v1 = resolvingTx.comparison!.p1[field as keyof ExtractedTransaction]
+                const v2 = resolvingTx.comparison!.p2[field as keyof ExtractedTransaction]
+
+                return (
+                  <div key={field}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
+                      {labels[field] || field}
+                    </label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {/* Pass 1 option */}
+                      <div
+                        onClick={() => updateTx(resolvingTx.id, field as keyof ExtractedTransaction, (v1 ?? null) as string | number | null)}
+                        style={{
+                          padding: '8px 12px', borderRadius: '6px', cursor: 'pointer',
+                          border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        }}
+                      >
+                        <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{String(v1 ?? '—')}</span>
+                        <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>PASS 1</span>
+                      </div>
+                      {/* Pass 2 option */}
+                      <div
+                        onClick={() => updateTx(resolvingTx.id, field as keyof ExtractedTransaction, (v2 ?? null) as string | number | null)}
+                        style={{
+                          padding: '8px 12px', borderRadius: '6px', cursor: 'pointer',
+                          border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        }}
+                      >
+                        <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{String(v2 ?? '—')}</span>
+                        <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>PASS 2</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setResolvingTx(null)} style={{
+                padding: '8px 16px', borderRadius: '8px', fontSize: '13px',
+                background: 'transparent', border: '1px solid var(--border-strong)', color: 'var(--text-secondary)', cursor: 'pointer',
+              }}>Cancel</button>
+              <button
+                onClick={() => {
+                  // Mark as resolved and approve
+                  setTransactions(prev => prev.map(tx =>
+                    tx.id === resolvingTx.id
+                      ? { ...tx, approved: true, comparison: { ...tx.comparison!, resolved: true, matchStatus: 'match' } }
+                      : tx
+                  ))
+                  setResolvingTx(null)
+                }}
+                style={{
+                  padding: '8px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+                  background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer',
+                }}
+              >Resolve &amp; Approve</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div style={{
@@ -955,7 +1230,7 @@ export default function AIImportPage() {
                   &larr; Back
                 </button>
                 <button
-                  onClick={() => runAnalysis(!!feedback)}
+                  onClick={() => setShowPassModal(true)}
                   disabled={!apiKey || analyzing}
                   style={{
                     ...btnPrimary,
@@ -1194,6 +1469,28 @@ export default function AIImportPage() {
               </div>
             )}
 
+            {/* Dual-pass conflict summary banner */}
+            {(() => {
+              const conflicts = transactions.filter(t => t.comparison?.matchStatus === 'conflict' && !t.comparison.resolved).length
+              const onlyOne = transactions.filter(t => t.comparison?.matchStatus === 'only_p1' || t.comparison?.matchStatus === 'only_p2').length
+              if (conflicts === 0 && onlyOne === 0) return null
+              return (
+                <div style={{
+                  padding: '12px 16px', background: 'var(--accent-subtle)',
+                  border: '1px solid var(--accent-border)', borderRadius: '8px', fontSize: '13px',
+                }}>
+                  <span style={{ color: 'var(--accent)', fontWeight: 600 }}>
+                    {conflicts > 0 && `⚠️ ${conflicts} conflict${conflicts !== 1 ? 's' : ''} between passes`}
+                    {conflicts > 0 && onlyOne > 0 && ' · '}
+                    {onlyOne > 0 && `${onlyOne} row${onlyOne !== 1 ? 's' : ''} found in only one pass`}
+                  </span>
+                  <span style={{ color: 'var(--text-secondary)', marginLeft: '8px', fontWeight: 400 }}>
+                    · These are auto-deselected. Click a conflict badge to resolve.
+                  </span>
+                </div>
+              )
+            })()}
+
             {/* Transaction table */}
             <div style={{
               background: 'var(--bg-surface)',
@@ -1275,8 +1572,16 @@ export default function AIImportPage() {
                       const isDbDuplicate = dbDuplicateIndices.has(originalIndex)
                       const isBatchDuplicate = showDuplicates && duplicateIds.has(tx.id)
 
-                      const rowBg = isDbDuplicate
+                      const comp = tx.comparison
+                      const isConflict = comp?.matchStatus === 'conflict' && !comp.resolved
+                      const isOnlyOne = comp?.matchStatus === 'only_p1' || comp?.matchStatus === 'only_p2'
+
+                      const rowBg = isConflict
+                        ? 'rgba(249, 115, 22, 0.10)'
+                        : isDbDuplicate
                         ? 'rgba(71,85,105,0.15)'
+                        : isOnlyOne
+                        ? 'rgba(71,85,105,0.12)'
                         : isBatchDuplicate
                         ? 'rgba(249, 115, 22, 0.08)'
                         : tx.approved ? 'transparent' : 'rgba(71,85,105,0.1)'
@@ -1288,7 +1593,7 @@ export default function AIImportPage() {
                           borderBottom: '1px solid var(--border)',
                           background: rowBg,
                           opacity: tx.approved ? 1 : 0.5,
-                          outline: isBatchDuplicate
+                          outline: (isConflict || isBatchDuplicate)
                             ? '1px solid var(--accent-border)'
                             : 'none',
                         }}
@@ -1403,6 +1708,28 @@ export default function AIImportPage() {
                         {/* Notes */}
                         <td style={{ padding: '6px 8px', minWidth: '160px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {comp?.matchStatus === 'conflict' && !comp.resolved && (
+                              <button
+                                onClick={e => { e.stopPropagation(); setResolvingTx(tx) }}
+                                style={{
+                                  flexShrink: 0,
+                                  padding: '2px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 700,
+                                  background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                &#9888; {comp.conflictFields.length} conflict{comp.conflictFields.length !== 1 ? 's' : ''}
+                              </button>
+                            )}
+                            {comp?.matchStatus === 'match' && comp.resolved && (
+                              <span style={{ flexShrink: 0, fontSize: '10px', color: 'var(--accent)', fontWeight: 600 }}>&#10003;</span>
+                            )}
+                            {comp?.matchStatus === 'only_p1' && (
+                              <span style={{ flexShrink: 0, padding: '2px 6px', borderRadius: '3px', fontSize: '9px', fontWeight: 700, background: 'var(--text-muted)', color: 'var(--bg-base)' }}>ONLY P1</span>
+                            )}
+                            {comp?.matchStatus === 'only_p2' && (
+                              <span style={{ flexShrink: 0, padding: '2px 6px', borderRadius: '3px', fontSize: '9px', fontWeight: 700, background: 'var(--text-muted)', color: 'var(--bg-base)' }}>ONLY P2</span>
+                            )}
                             {isDbDuplicate && (
                               <span style={{
                                 flexShrink: 0,

@@ -77,8 +77,12 @@ const LEVEL2_BY_EVENT_TYPE: Record<string, string[]> = {
   'Debt_Increase': ['Credit Cards', 'Loans'],
   'Opening_Balance': ['Fiduciary', 'ETFs', 'Collective Investment Funds', 'Companies', 'Bank (Cash)', 'Salary', 'Other Incomes'],
 }
+// Legacy (unscoped) keys — kept only to migrate old drafts into per-user keys.
 const STORAGE_KEY = 'wealth_ai_import_draft'
 const STORAGE_STEP_KEY = 'wealth_ai_import_step'
+// Per-user keys so a draft never leaks between accounts on a shared browser.
+const draftKeyFor = (uid: number) => `${STORAGE_KEY}_${uid}`
+const stepKeyFor = (uid: number) => `${STORAGE_STEP_KEY}_${uid}`
 
 function formatCOP(n: number | null): string {
   if (!n) return '—'
@@ -319,6 +323,7 @@ export default function AIImportPage() {
   const [importAccounts, setImportAccounts] = useState<ImportAccount[]>([])
   const [selectedAccount, setSelectedAccount] = useState<ImportAccount | null>(null)
   const [loadingAccounts, setLoadingAccounts] = useState(false)
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null)
   const [apiKey, setApiKey] = useState('')
   const [apiKeyVisible, setApiKeyVisible] = useState(false)
   const [feedback, setFeedback] = useState('')
@@ -423,6 +428,14 @@ export default function AIImportPage() {
     return dupes
   }, [transactions])
 
+  // ── Identify the logged-in user (to scope drafts per account) ──────────────
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => { if (data?.user?.id != null) setCurrentUserId(data.user.id) })
+      .catch(() => {})
+  }, [])
+
   // ── Load import-enabled accounts on mount ──────────────────────────────────
   useEffect(() => {
     setLoadingAccounts(true)
@@ -438,11 +451,26 @@ export default function AIImportPage() {
       .finally(() => setLoadingAccounts(false))
   }, [])
 
-  // ── localStorage draft persistence ─────────────────────────────────────────
+  // ── localStorage draft persistence (scoped per user) ───────────────────────
   useEffect(() => {
+    if (currentUserId == null) return
     try {
-      const savedStep = localStorage.getItem(STORAGE_STEP_KEY)
-      const savedData = localStorage.getItem(STORAGE_KEY)
+      // One-time migration: an old unscoped draft is claimed by the first user
+      // who opens AI Import, then the legacy keys are removed so it can't leak
+      // to other accounts on the same browser.
+      const legacyData = localStorage.getItem(STORAGE_KEY)
+      const legacyStep = localStorage.getItem(STORAGE_STEP_KEY)
+      if (legacyData !== null || legacyStep !== null) {
+        if (legacyData !== null && localStorage.getItem(draftKeyFor(currentUserId)) === null) {
+          localStorage.setItem(draftKeyFor(currentUserId), legacyData)
+          if (legacyStep !== null) localStorage.setItem(stepKeyFor(currentUserId), legacyStep)
+        }
+        localStorage.removeItem(STORAGE_KEY)
+        localStorage.removeItem(STORAGE_STEP_KEY)
+      }
+
+      const savedStep = localStorage.getItem(stepKeyFor(currentUserId))
+      const savedData = localStorage.getItem(draftKeyFor(currentUserId))
       if (savedData && savedStep === 'review') {
         const parsed = JSON.parse(savedData)
         if (parsed.transactions?.length > 0) {
@@ -456,28 +484,34 @@ export default function AIImportPage() {
     } catch (e) {
       console.error('Failed to load draft:', e)
     }
-  }, [])
+  }, [currentUserId])
 
   useEffect(() => {
+    if (currentUserId == null) return
     if (transactions.length > 0) {
       try {
         const savedAt = new Date().toISOString()
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        localStorage.setItem(draftKeyFor(currentUserId), JSON.stringify({
           transactions,
           feedback,
           provider,
           savedAt,
         }))
-        localStorage.setItem(STORAGE_STEP_KEY, 'review')
+        localStorage.setItem(stepKeyFor(currentUserId), 'review')
         setDraftSavedAt(savedAt)
       } catch (e) {
         console.error('Failed to save draft:', e)
       }
     }
-  }, [transactions, feedback, provider])
+  }, [transactions, feedback, provider, currentUserId])
 
   const clearDraft = () => {
     try {
+      if (currentUserId != null) {
+        localStorage.removeItem(draftKeyFor(currentUserId))
+        localStorage.removeItem(stepKeyFor(currentUserId))
+      }
+      // Also clear any stray legacy keys.
       localStorage.removeItem(STORAGE_KEY)
       localStorage.removeItem(STORAGE_STEP_KEY)
     } catch (e) {

@@ -446,26 +446,63 @@ export default function TransactionsPage() {
   const monthLabel = (MONTHS.find(m => m.key === selectedMonth)?.label || '') + ' 2026'
 
   // ── CSV Export ──────────────────────────────────────────────────────────────
-  const exportCSV = () => {
-    const headers = ['date', 'event_type', 'level_1', 'level_2', 'level_3', 'usd_amount', 'fx_rate', 'amount', 'from_account', 'to_account', 'notes']
-    const rows = filtered.map(t =>
-      headers.map(h => {
-        const val = t[h as keyof Transaction]
-        if (val === null || val === undefined) return ''
-        const s = String(val)
-        return s.includes(',') || s.includes('"') || s.includes('\n')
-          ? `"${s.replace(/"/g, '""')}"`
-          : s
-      }).join(',')
-    )
-    const csv = [headers.join(','), ...rows].join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `transactions_${selectedMonth}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [exportRange, setExportRange] = useState<'current' | 'all' | 'range'>('current')
+  const [exportFrom, setExportFrom] = useState('2026-01')
+  const [exportTo, setExportTo] = useState('2026-12')
+  const [exporting, setExporting] = useState(false)
+
+  const exportCSV = async (range: 'current' | 'all' | 'range', from?: string, to?: string) => {
+    setExporting(true)
+    try {
+      let url = '/api/transactions/export'
+      if (range === 'current') url += `?month=${selectedMonth}`
+      else if (range === 'range') url += `?from=${from}&to=${to}`
+
+      const res = await fetch(url)
+      const data = await res.json()
+      const txs: Transaction[] = data.transactions || []
+
+      const headers = [
+        'id', 'date', 'month_label', 'event_type', 'level_1', 'level_2', 'level_3',
+        'usd_amount', 'fx_rate', 'amount', 'from_account', 'to_account', 'notes'
+      ]
+
+      const rows = txs.map(tx => [
+        tx.id,
+        tx.date ? new Date(tx.date).toISOString().split('T')[0] : '',
+        tx.month_label || '',
+        tx.event_type || '',
+        tx.level_1 || '',
+        tx.level_2 || '',
+        tx.level_3 || '',
+        tx.usd_amount ?? '',
+        tx.fx_rate ?? '',
+        tx.amount ?? '',
+        tx.from_account || '',
+        tx.to_account || '',
+        `"${(tx.notes || '').replace(/"/g, '""')}"`,
+      ])
+
+      const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+      const dlUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = dlUrl
+      const filename = range === 'current'
+        ? `transactions_${selectedMonth}.csv`
+        : range === 'all'
+        ? 'transactions_all.csv'
+        : `transactions_${from}_to_${to}.csv`
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(dlUrl)
+      setShowExportModal(false)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setExporting(false)
+    }
   }
 
   // ── CSV Import ──────────────────────────────────────────────────────────────
@@ -585,9 +622,10 @@ export default function TransactionsPage() {
               }}
             />
             <button
-              onClick={exportCSV}
+              onClick={() => setShowExportModal(true)}
               style={{
-                padding: '8px 14px',
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '8px 16px',
                 background: 'transparent',
                 color: 'var(--text-secondary)',
                 border: '1px solid var(--border-strong)',
@@ -597,7 +635,7 @@ export default function TransactionsPage() {
                 cursor: 'pointer',
               }}
             >
-              Export CSV
+              ↓ Export CSV
             </button>
             <button
               onClick={() => csvInputRef.current?.click()}
@@ -1162,6 +1200,139 @@ export default function TransactionsPage() {
           </div>
         )}
       </div>
+
+      {/* Export CSV modal */}
+      {showExportModal && (
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, padding: '24px',
+        }}>
+          <div style={{
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-strong)',
+            borderRadius: '16px',
+            padding: '28px 32px',
+            width: '420px',
+            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+          }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
+              Export Transactions
+            </h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px' }}>
+              Selecciona el rango de transacciones a exportar
+            </p>
+
+            {/* Range selector */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
+              {([
+                { key: 'current', label: `Mes actual (${selectedMonth})`, sub: 'Solo las transacciones del mes visible' },
+                { key: 'all', label: 'Todas las transacciones', sub: 'Historial completo incluyendo años anteriores' },
+                { key: 'range', label: 'Rango personalizado', sub: 'Elige desde y hasta qué mes' },
+              ] as const).map(opt => (
+                <div
+                  key={opt.key}
+                  onClick={() => setExportRange(opt.key)}
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: '8px',
+                    border: exportRange === opt.key
+                      ? '1px solid var(--accent-border)'
+                      : '1px solid var(--border)',
+                    background: exportRange === opt.key ? 'var(--accent-subtle)' : 'transparent',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '12px',
+                  }}
+                >
+                  <div style={{
+                    width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0,
+                    border: exportRange === opt.key ? 'none' : '2px solid var(--border-strong)',
+                    background: exportRange === opt.key ? 'var(--accent)' : 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {exportRange === opt.key && (
+                      <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#fff' }} />
+                    )}
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{opt.label}</p>
+                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{opt.sub}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Range pickers */}
+            {exportRange === 'range' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>Desde</label>
+                  <select
+                    value={exportFrom}
+                    onChange={e => setExportFrom(e.target.value)}
+                    style={{
+                      width: '100%', background: 'var(--bg-elevated)',
+                      border: '1px solid var(--border-strong)', borderRadius: '6px',
+                      padding: '7px 10px', color: 'var(--text-primary)', fontSize: '12px', outline: 'none',
+                    }}
+                  >
+                    {['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06',
+                      '2026-07','2026-08','2026-09','2026-10','2026-11','2026-12'].map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>Hasta</label>
+                  <select
+                    value={exportTo}
+                    onChange={e => setExportTo(e.target.value)}
+                    style={{
+                      width: '100%', background: 'var(--bg-elevated)',
+                      border: '1px solid var(--border-strong)', borderRadius: '6px',
+                      padding: '7px 10px', color: 'var(--text-primary)', fontSize: '12px', outline: 'none',
+                    }}
+                  >
+                    {['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06',
+                      '2026-07','2026-08','2026-09','2026-10','2026-11','2026-12']
+                      .filter(m => m >= exportFrom)
+                      .map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Buttons */}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowExportModal(false)}
+                style={{
+                  padding: '8px 16px', borderRadius: '8px', fontSize: '13px',
+                  background: 'transparent', border: '1px solid var(--border-strong)',
+                  color: 'var(--text-secondary)', cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => exportCSV(exportRange, exportFrom, exportTo)}
+                disabled={exporting}
+                style={{
+                  padding: '8px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+                  background: exporting ? 'var(--bg-elevated)' : 'var(--accent)',
+                  color: exporting ? 'var(--text-muted)' : '#ffffff',
+                  border: 'none', cursor: exporting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {exporting ? 'Exportando...' : '↓ Exportar CSV'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Duplicate groups modal */}
       {showDuplicateModal && duplicateGroups.length > 0 && (

@@ -79,44 +79,9 @@ async function main() {
   console.log(`  CategoryDef: ${catCount.count}`)
   console.log(`  EventTypeDef: ${etCount.count}`)
 
-  // Copy catalog definitions for Dani (AccountDef, CategoryDef, EventTypeDef)
-  const [juanAccounts, juanCategories, juanEventTypes] = await Promise.all([
-    prisma.accountDef.findMany({ where: { user_id: juan.id } }),
-    prisma.categoryDef.findMany({ where: { user_id: juan.id } }),
-    prisma.eventTypeDef.findMany({ where: { user_id: juan.id } }),
-  ])
-
-  // Only copy if Dani doesn't have them yet
-  const daniAccCount = await prisma.accountDef.count({ where: { user_id: dani.id } })
-  if (daniAccCount === 0) {
-    await prisma.accountDef.createMany({
-      data: juanAccounts.map(a => ({
-        name: a.name,
-        type: a.type,
-        is_active: a.is_active,
-        user_id: dani.id,
-      })),
-    })
-    await prisma.categoryDef.createMany({
-      data: juanCategories.map(c => ({
-        level_1: c.level_1,
-        level_2: c.level_2,
-        level_3: c.level_3,
-        is_active: c.is_active,
-        user_id: dani.id,
-      })),
-      skipDuplicates: true,
-    })
-    await prisma.eventTypeDef.createMany({
-      data: juanEventTypes.map(e => ({
-        name: e.name,
-        is_active: e.is_active,
-        user_id: dani.id,
-      })),
-      skipDuplicates: true,
-    })
-    console.log(`Copied catalogs to Dani: ${juanAccounts.length} accounts, ${juanCategories.length} categories, ${juanEventTypes.length} event types`)
-  }
+  // New users start with an empty Data Source catalog (no accounts, categories,
+  // or event types) — each profile builds its own from scratch rather than
+  // inheriting another user's setup.
 
   console.log('\nAuth seed complete.')
   console.log('Passwords:')

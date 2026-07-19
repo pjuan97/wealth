@@ -154,6 +154,99 @@ function PropagateModal({
   )
 }
 
+function DeleteConfirmModal({
+  title,
+  usage,
+  onDeactivate,
+  onForceDelete,
+  onCancel,
+}: {
+  title: string
+  usage: UsageInfo
+  onDeactivate: () => void
+  onForceDelete: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(0,0,0,0.6)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 1000,
+    }}>
+      <div style={{
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-strong)',
+        borderRadius: '14px',
+        padding: '28px 32px',
+        width: '440px',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+      }}>
+        <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
+          {title}
+        </h3>
+        <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+          This is referenced by existing records:
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px' }}>
+          {usage.transactions > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Transactions</span>
+              <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{usage.transactions}</span>
+            </div>
+          )}
+          {(usage.equity_executed ?? 0) > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Equity Executed</span>
+              <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{usage.equity_executed}</span>
+            </div>
+          )}
+          {(usage.equity_forecast ?? 0) > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Equity Forecast</span>
+              <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{usage.equity_forecast}</span>
+            </div>
+          )}
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', fontSize: '13px',
+            borderTop: '1px solid var(--border)', paddingTop: '6px', marginTop: '4px',
+          }}>
+            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Total records</span>
+            <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{usage.total}</span>
+          </div>
+        </div>
+        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '20px' }}>
+          These existing records keep their value either way — deleting only removes it from
+          future dropdowns. <strong>Deactivate</strong> is reversible; <strong>Delete anyway</strong> is not.
+        </p>
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <button onClick={onCancel} style={{
+            padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 500,
+            background: 'transparent', border: '1px solid var(--border-strong)',
+            color: 'var(--text-secondary)', cursor: 'pointer',
+          }}>
+            Cancel
+          </button>
+          <button onClick={onForceDelete} style={{
+            padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 500,
+            background: 'transparent', border: '1px solid rgba(220,38,38,0.4)',
+            color: '#dc2626', cursor: 'pointer',
+          }}>
+            Delete anyway
+          </button>
+          <button onClick={onDeactivate} style={{
+            padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+            background: 'var(--accent)', border: 'none',
+            color: '#ffffff', cursor: 'pointer',
+          }}>
+            Deactivate instead
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function DataSourcePage() {
   const [tab, setTab] = useState<'accounts' | 'categories' | 'eventTypes'>('accounts')
   const [accounts, setAccounts] = useState<AccountDef[]>([])
@@ -174,6 +267,13 @@ export default function DataSourcePage() {
     id: number
     newName: string
     oldName: string
+    usage: UsageInfo
+  } | null>(null)
+
+  const [deleteModal, setDeleteModal] = useState<{
+    type: 'account' | 'category' | 'eventType'
+    id: number
+    name: string
     usage: UsageInfo
   } | null>(null)
 
@@ -252,11 +352,60 @@ export default function DataSourcePage() {
     finally { setSaving(false) }
   }
 
-  const handleDelete = async (type: string, id: number) => {
+  // Permanently delete an account/category/eventType. Checks usage first —
+  // if nothing references it, deletes immediately; otherwise opens a modal
+  // so the user can choose to deactivate (safe) or force-delete (irreversible).
+  const handleDeleteClick = async (
+    type: 'account' | 'category' | 'eventType',
+    id: number,
+    name: string,
+    extra?: { level_2?: string; level_3?: string | null }
+  ) => {
+    const param = type === 'category'
+      ? `${extra?.level_2 || name}||${extra?.level_3 || ''}`
+      : name
+
+    const res = await fetch(`/api/data-source/usage?type=${type}&name=${encodeURIComponent(param)}`)
+    const usage: UsageInfo = await res.json()
+
+    if (usage.total === 0) {
+      if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return
+      const delRes = await fetch(`/api/data-source?type=${type}&id=${id}&action=delete`, { method: 'DELETE' })
+      if (!delRes.ok) {
+        const data = await delRes.json().catch(() => ({}))
+        setError(data.error || 'Failed to delete')
+        setTimeout(() => setError(null), 4000)
+        return
+      }
+      await load()
+      return
+    }
+
+    setDeleteModal({ type, id, name, usage })
+  }
+
+  const confirmDeactivate = async () => {
+    if (!deleteModal) return
+    const { type, id } = deleteModal
     const res = await fetch(`/api/data-source?type=${type}&id=${id}`, { method: 'DELETE' })
-    const data = await res.json()
+    setDeleteModal(null)
     if (!res.ok) {
-      setError(data.error || 'Cannot delete')
+      const data = await res.json().catch(() => ({}))
+      setError(data.error || 'Failed to deactivate')
+      setTimeout(() => setError(null), 4000)
+      return
+    }
+    await load()
+  }
+
+  const confirmForceDelete = async () => {
+    if (!deleteModal) return
+    const { type, id } = deleteModal
+    const res = await fetch(`/api/data-source?type=${type}&id=${id}&action=delete&force=true`, { method: 'DELETE' })
+    setDeleteModal(null)
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setError(data.error || 'Failed to delete')
       setTimeout(() => setError(null), 4000)
       return
     }
@@ -417,6 +566,16 @@ export default function DataSourcePage() {
             doUpdate(propagateModal.type, propagateModal.id, propagateModal.newName, propagate, propagateModal.oldName)
           }
           onCancel={() => setPropagateModal(null)}
+        />
+      )}
+
+      {deleteModal && (
+        <DeleteConfirmModal
+          title={`Delete "${deleteModal.name}"`}
+          usage={deleteModal.usage}
+          onDeactivate={confirmDeactivate}
+          onForceDelete={confirmForceDelete}
+          onCancel={() => setDeleteModal(null)}
         />
       )}
 
@@ -781,6 +940,16 @@ export default function DataSourcePage() {
                           >
                             {acc.is_active ? 'Deactivate' : 'Activate'}
                           </button>
+                          <button
+                            onClick={() => handleDeleteClick('account', acc.id, acc.name)}
+                            style={{
+                              padding: '4px 12px', borderRadius: '6px', fontSize: '12px',
+                              background: 'transparent', border: '1px solid rgba(220,38,38,0.4)',
+                              color: '#dc2626', cursor: 'pointer',
+                            }}
+                          >
+                            Delete
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -838,11 +1007,16 @@ export default function DataSourcePage() {
                             background: 'transparent', border: '1px solid var(--border-strong)',
                             color: 'var(--text-secondary)', cursor: 'pointer',
                           }}>Edit</button>
-                          <button onClick={() => handleDelete('category', cat.id)} style={{
-                            padding: '4px 12px', borderRadius: '6px', fontSize: '12px',
-                            background: 'transparent', border: '1px solid var(--border-strong)',
-                            color: 'var(--text-muted)', cursor: 'pointer',
-                          }}>Delete</button>
+                          <button
+                            onClick={() => handleDeleteClick('category', cat.id, cat.level_2, { level_2: cat.level_2, level_3: cat.level_3 })}
+                            style={{
+                              padding: '4px 12px', borderRadius: '6px', fontSize: '12px',
+                              background: 'transparent', border: '1px solid rgba(220,38,38,0.4)',
+                              color: '#dc2626', cursor: 'pointer',
+                            }}
+                          >
+                            Delete
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -920,6 +1094,16 @@ export default function DataSourcePage() {
                             }}
                           >
                             {et.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteClick('eventType', et.id, et.name)}
+                            style={{
+                              padding: '4px 12px', borderRadius: '6px', fontSize: '12px',
+                              background: 'transparent', border: '1px solid rgba(220,38,38,0.4)',
+                              color: '#dc2626', cursor: 'pointer',
+                            }}
+                          >
+                            Delete
                           </button>
                         </div>
                       </td>

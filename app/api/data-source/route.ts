@@ -215,6 +215,31 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
+// Count how many records (across Transaction + Equity tables) reference this
+// account/category/eventType by its current string value.
+async function countUsage(
+  userId: number,
+  type: 'account' | 'category' | 'eventType',
+  ref: { name?: string; level_2?: string; level_3?: string | null }
+): Promise<number> {
+  if (type === 'account') {
+    const [txFrom, txTo, equityExec, equityForecast] = await Promise.all([
+      prisma.transaction.count({ where: { user_id: userId, from_account: ref.name } }),
+      prisma.transaction.count({ where: { user_id: userId, to_account: ref.name } }),
+      prisma.equityExecuted.count({ where: { user_id: userId, platform: ref.name } }),
+      prisma.equityForecast.count({ where: { user_id: userId, account: ref.name } }),
+    ])
+    return txFrom + txTo + equityExec + equityForecast
+  }
+  if (type === 'category') {
+    return prisma.transaction.count({
+      where: { user_id: userId, level_2: ref.level_2, level_3: ref.level_3 ?? undefined },
+    })
+  }
+  // eventType
+  return prisma.transaction.count({ where: { user_id: userId, event_type: ref.name } })
+}
+
 export async function DELETE(request: NextRequest) {
   const session = await verifyRequestSession(request)
   if (!session) {
@@ -226,6 +251,10 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type')
     const id = parseInt(searchParams.get('id') || '0')
+    // action=delete permanently removes the definition. Omitted (default)
+    // keeps the existing toggle (deactivate/activate) behavior.
+    const action = searchParams.get('action')
+    const force = searchParams.get('force') === 'true'
 
     if (!type || !id) {
       return NextResponse.json({ error: 'type and id required' }, { status: 400 })
@@ -234,6 +263,15 @@ export async function DELETE(request: NextRequest) {
     if (type === 'account') {
       const account = await prisma.accountDef.findFirst({ where: { id, user_id: userId } })
       if (!account) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+      if (action === 'delete') {
+        const usage = await countUsage(userId, 'account', { name: account.name })
+        if (usage > 0 && !force) {
+          return NextResponse.json({ success: false, blocked: true, usage }, { status: 409 })
+        }
+        await prisma.accountDef.delete({ where: { id } })
+        return NextResponse.json({ success: true, deleted: true, usage })
+      }
 
       const updated = await prisma.accountDef.update({
         where: { id },
@@ -250,11 +288,13 @@ export async function DELETE(request: NextRequest) {
       const cat = await prisma.categoryDef.findFirst({ where: { id, user_id: userId } })
       if (!cat) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-      const usageCount = await prisma.transaction.count({
-        where: { user_id: userId, level_2: cat.level_2, level_3: cat.level_3 ?? undefined },
-      })
+      const usageCount = await countUsage(userId, 'category', { level_2: cat.level_2, level_3: cat.level_3 })
 
-      if (usageCount > 0) {
+      if (usageCount > 0 && !force) {
+        if (action === 'delete') {
+          return NextResponse.json({ success: false, blocked: true, usage: usageCount }, { status: 409 })
+        }
+        // Legacy behavior (no action specified): silently deactivate instead of deleting.
         const updated = await prisma.categoryDef.update({
           where: { id },
           data: { is_active: !cat.is_active },
@@ -263,12 +303,21 @@ export async function DELETE(request: NextRequest) {
       }
 
       await prisma.categoryDef.delete({ where: { id } })
-      return NextResponse.json({ success: true, deleted: true })
+      return NextResponse.json({ success: true, deleted: true, usage: usageCount })
     }
 
     if (type === 'eventType') {
       const et = await prisma.eventTypeDef.findFirst({ where: { id, user_id: userId } })
       if (!et) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+      if (action === 'delete') {
+        const usage = await countUsage(userId, 'eventType', { name: et.name })
+        if (usage > 0 && !force) {
+          return NextResponse.json({ success: false, blocked: true, usage }, { status: 409 })
+        }
+        await prisma.eventTypeDef.delete({ where: { id } })
+        return NextResponse.json({ success: true, deleted: true, usage })
+      }
 
       const updated = await prisma.eventTypeDef.update({
         where: { id },

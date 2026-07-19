@@ -45,6 +45,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ transactions: count, total: count })
     }
 
+    if (type === 'eventType') {
+      const count = await prisma.transaction.count({
+        where: { user_id: userId, event_type: name },
+      })
+      return NextResponse.json({ transactions: count, total: count })
+    }
+
     return NextResponse.json({ total: 0 })
   } catch (error) {
     return NextResponse.json({ error: 'Failed to count usage' }, { status: 500 })

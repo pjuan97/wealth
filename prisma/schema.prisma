@@ -64,7 +64,7 @@ model PlanVsAchievement {
   seasonality  Decimal? @db.Decimal(6, 4)
   plan         Decimal  @db.Decimal(14, 2)
 
-  @@unique([month_label, event_type, level_2, level_3])
+  @@unique([month_label, event_type, level_2, level_3, user_id])
   @@index([month_label])
 }
 

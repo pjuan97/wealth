@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyRequestSession } from '@/lib/auth'
+import { VALID_PLAN_MONTHS, upsertPlanRow } from '@/lib/planService'
 
 // Compute executed amounts from transactions
 async function computeExecuted(monthLabel: string, userId: number) {
@@ -167,6 +168,57 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/plan error:', error)
     return NextResponse.json({ error: 'Failed to fetch plan data' }, { status: 500 })
+  }
+}
+
+// POST /api/plan - create/update plan rows for one category across selected months
+export async function POST(request: NextRequest) {
+  const session = await verifyRequestSession(request)
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = session.id
+
+  try {
+    const body = await request.json()
+    const { event_type, level_2, level_3, months, amount } = body
+
+    if (!['Income', 'Expense'].includes(event_type)) {
+      return NextResponse.json({ error: 'event_type must be Income or Expense' }, { status: 400 })
+    }
+    if (!level_2 || typeof level_2 !== 'string') {
+      return NextResponse.json({ error: 'level_2 is required' }, { status: 400 })
+    }
+    if (!Array.isArray(months) || months.length === 0) {
+      return NextResponse.json({ error: 'At least one month is required' }, { status: 400 })
+    }
+    const invalidMonths = months.filter((m: string) => !VALID_PLAN_MONTHS.includes(m))
+    if (invalidMonths.length > 0) {
+      return NextResponse.json({ error: `Invalid month(s): ${invalidMonths.join(', ')}` }, { status: 400 })
+    }
+    const amountNum = Number(amount)
+    if (!Number.isFinite(amountNum) || amountNum < 0) {
+      return NextResponse.json({ error: 'amount must be a non-negative number' }, { status: 400 })
+    }
+
+    const level3Value: string | null = level_3 || null
+
+    // Guard against mismatches: the category/subcategory must exist in Data Source.
+    const catMatch = await prisma.categoryDef.findFirst({
+      where: { user_id: userId, level_1: event_type, level_2, level_3: level3Value },
+    })
+    if (!catMatch) {
+      return NextResponse.json({ error: 'This category/subcategory is not defined in Data Source' }, { status: 400 })
+    }
+
+    await Promise.all(
+      months.map((m: string) => upsertPlanRow(userId, m, event_type, level_2, level3Value, amountNum))
+    )
+
+    return NextResponse.json({ success: true, count: months.length, months })
+  } catch (error) {
+    console.error('POST /api/plan error:', error)
+    return NextResponse.json({ error: 'Failed to create plan item' }, { status: 500 })
   }
 }
 

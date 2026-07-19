@@ -1,8 +1,14 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+interface CategoryDef {
+  id: number
+  level_1: string
+  level_2: string
+  level_3: string | null
+}
 interface PlanRow {
   id: number
   month_label: string
@@ -174,6 +180,251 @@ function EditableAmount({
   )
 }
 
+// ─── Add Plan Item modal ────────────────────────────────────────────────────
+function AddPlanItemModal({
+  categories,
+  onClose,
+  onSaved,
+}: {
+  categories: CategoryDef[]
+  onClose: () => void
+  onSaved: () => Promise<void> | void
+}) {
+  const [eventType, setEventType] = useState<'Income' | 'Expense'>('Expense')
+  const [level2, setLevel2] = useState('')
+  const [level3, setLevel3] = useState('')
+  const [amount, setAmount] = useState('')
+  const [months, setMonths] = useState<Set<string>>(new Set())
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const level2Options = useMemo(() => (
+    [...new Set(categories.filter(c => c.level_1 === eventType).map(c => c.level_2))].sort()
+  ), [categories, eventType])
+
+  const level3Options = useMemo(() => (
+    [...new Set(
+      categories
+        .filter(c => c.level_1 === eventType && c.level_2 === level2 && c.level_3)
+        .map(c => c.level_3 as string)
+    )].sort()
+  ), [categories, eventType, level2])
+
+  const level3Locked = level2 !== '' && level3Options.length === 0
+
+  const toggleMonth = (m: string) => {
+    setMonths(prev => {
+      const next = new Set(prev)
+      if (next.has(m)) next.delete(m)
+      else next.add(m)
+      return next
+    })
+  }
+
+  const amountNum = parseFloat(amount.replace(/[^0-9.]/g, ''))
+  const canSave = !!level2 && months.size > 0 && Number.isFinite(amountNum) && amountNum >= 0 && !saving
+
+  const handleSave = async () => {
+    if (!canSave) return
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_type: eventType,
+          level_2: level2,
+          level_3: level3 || null,
+          months: [...months],
+          amount: amountNum,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Failed to save plan item')
+        return
+      }
+      await onSaved()
+      onClose()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Network error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const fieldLabel: React.CSSProperties = {
+    fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)',
+    display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em',
+  }
+  const selectStyle: React.CSSProperties = {
+    width: '100%', background: 'var(--bg-elevated)', border: '1px solid var(--border-strong)',
+    borderRadius: '8px', padding: '9px 12px', color: 'var(--text-primary)', fontSize: '13px', outline: 'none',
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '24px',
+    }}>
+      <div style={{
+        background: 'var(--bg-surface)', border: '1px solid var(--border-strong)',
+        borderRadius: '16px', width: '480px', maxHeight: '85vh', overflowY: 'auto',
+        boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+      }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>
+            Add Plan Item
+          </h3>
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+            Define a category and apply one amount across the months you pick.
+          </p>
+        </div>
+
+        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Event Type */}
+          <div>
+            <label style={fieldLabel}>Event Type</label>
+            <select
+              style={selectStyle}
+              value={eventType}
+              onChange={e => {
+                setEventType(e.target.value as 'Income' | 'Expense')
+                setLevel2('')
+                setLevel3('')
+              }}
+            >
+              <option value="Income">Income</option>
+              <option value="Expense">Expense</option>
+            </select>
+          </div>
+
+          {/* Category (Level 2) */}
+          <div>
+            <label style={fieldLabel}>Category</label>
+            <select
+              style={selectStyle}
+              value={level2}
+              onChange={e => { setLevel2(e.target.value); setLevel3('') }}
+            >
+              <option value="">Select a category…</option>
+              {level2Options.map(l2 => <option key={l2} value={l2}>{l2}</option>)}
+            </select>
+            {level2Options.length === 0 && (
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                No {eventType} categories defined in Data Source yet.
+              </p>
+            )}
+          </div>
+
+          {/* Subcategory (Level 3) — locked if none defined */}
+          <div>
+            <label style={fieldLabel}>Subcategory</label>
+            <select
+              style={{
+                ...selectStyle,
+                opacity: level3Locked || !level2 ? 0.5 : 1,
+                cursor: level3Locked || !level2 ? 'not-allowed' : 'pointer',
+              }}
+              value={level3}
+              disabled={level3Locked || !level2}
+              onChange={e => setLevel3(e.target.value)}
+            >
+              <option value="">
+                {!level2 ? 'Select a category first' : level3Locked ? 'No subcategories defined' : 'None'}
+              </option>
+              {level3Options.map(l3 => <option key={l3} value={l3}>{l3}</option>)}
+            </select>
+          </div>
+
+          {/* Amount */}
+          <div>
+            <label style={fieldLabel}>Amount (COP)</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="e.g. 500000"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              style={selectStyle}
+            />
+          </div>
+
+          {/* Months */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <label style={{ ...fieldLabel, marginBottom: 0 }}>Apply to months</label>
+              <button
+                type="button"
+                onClick={() => setMonths(months.size === MONTHS.length ? new Set() : new Set(MONTHS.map(m => m.key)))}
+                style={{
+                  background: 'transparent', border: 'none', color: 'var(--accent)',
+                  fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                {months.size === MONTHS.length ? 'Clear all' : 'Select all'}
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+              {MONTHS.map(m => (
+                <label
+                  key={m.key}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '6px 10px', borderRadius: '6px', cursor: 'pointer',
+                    border: months.has(m.key) ? '1px solid var(--accent-border)' : '1px solid var(--border)',
+                    background: months.has(m.key) ? 'var(--accent-subtle)' : 'transparent',
+                    fontSize: '12px',
+                    color: months.has(m.key) ? 'var(--accent)' : 'var(--text-secondary)',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={months.has(m.key)}
+                    onChange={() => toggleMonth(m.key)}
+                    style={{ cursor: 'pointer', accentColor: 'var(--accent)' }}
+                  />
+                  {m.label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {error && (
+            <div style={{
+              padding: '10px 14px', background: 'rgba(249,115,22,0.08)',
+              border: '1px solid var(--accent-border)', borderRadius: '8px',
+              fontSize: '12px', color: 'var(--accent)',
+            }}>
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{
+            padding: '8px 16px', borderRadius: '8px', fontSize: '13px',
+            background: 'transparent', border: '1px solid var(--border-strong)', color: 'var(--text-secondary)', cursor: 'pointer',
+          }}>Cancel</button>
+          <button
+            onClick={handleSave}
+            disabled={!canSave}
+            style={{
+              padding: '8px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+              background: canSave ? 'var(--accent)' : 'var(--bg-elevated)',
+              color: canSave ? '#fff' : 'var(--text-muted)',
+              border: 'none', cursor: canSave ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {saving ? 'Saving…' : 'Add Plan Item'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function PlanPage() {
   const [tab, setTab] = useState<'monthly' | 'annual'>('monthly')
@@ -194,6 +445,23 @@ export default function PlanPage() {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     new Set(['Income', 'Expenses', 'Expense_Life', 'Expense_Health', 'Expense_Travels', 'Expense_Others'])
   )
+
+  // Category catalog (for the Add Plan Item modal)
+  const [categories, setCategories] = useState<CategoryDef[]>([])
+
+  useEffect(() => {
+    fetch('/api/data-source')
+      .then(r => r.json())
+      .then(data => setCategories(data.categories || []))
+      .catch(console.error)
+  }, [])
+
+  // Add Plan Item modal
+  const [showAddModal, setShowAddModal] = useState(false)
+
+  // CSV import
+  const csvInputRef = useRef<HTMLInputElement>(null)
+  const [importing, setImporting] = useState(false)
 
   // ── Load monthly data ──────────────────────────────────────────────────────
   const loadMonthly = useCallback(async (month: string) => {
@@ -239,6 +507,72 @@ export default function PlanPage() {
       body: JSON.stringify({ id, plan: newPlan }),
     })
     await loadMonthly(selectedMonth)
+  }
+
+  // Re-fetch both views after a create/bulk-import, bypassing the annual cache guard.
+  const refreshAll = useCallback(async () => {
+    await Promise.all([loadMonthly(selectedMonth), loadAnnual()])
+  }, [selectedMonth, loadMonthly, loadAnnual])
+
+  // ── CSV export ──────────────────────────────────────────────────────────────
+  const exportCSV = async () => {
+    const res = await fetch('/api/plan/export')
+    if (!res.ok) { alert('Export failed'); return }
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'plan_structure_2026.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // ── CSV import ──────────────────────────────────────────────────────────────
+  const importCSV = async (file: File) => {
+    const text = await file.text()
+    const lines = text.split('\n').filter(l => l.trim())
+    if (lines.length < 2) return
+
+    const headers = lines[0].split(',').map(h => h.trim())
+    const parsedRows = lines.slice(1).map(line => {
+      const values: string[] = []
+      let current = ''
+      let inQuotes = false
+      for (const char of line) {
+        if (char === '"') { inQuotes = !inQuotes; continue }
+        if (char === ',' && !inQuotes) { values.push(current.trim()); current = ''; continue }
+        current += char
+      }
+      values.push(current.trim())
+
+      const obj: Record<string, string> = {}
+      headers.forEach((h, i) => { obj[h] = values[i] || '' })
+      return {
+        month_label: obj.month_label || '',
+        event_type: obj.event_type || '',
+        level_2: obj.level_2 || '',
+        level_3: obj.level_3 || null,
+        plan: obj.plan || '0',
+      }
+    }).filter(r => r.month_label && r.event_type && r.level_2)
+
+    if (parsedRows.length === 0) return
+
+    setImporting(true)
+    try {
+      const res = await fetch('/api/plan/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: parsedRows }),
+      })
+      const data = await res.json()
+      if (data.updated > 0) await refreshAll()
+      alert(`Updated ${data.updated} of ${parsedRows.length} rows.${data.errors?.length ? '\n\nErrors:\n' + data.errors.slice(0, 20).join('\n') + (data.errors.length > 20 ? `\n…and ${data.errors.length - 20} more` : '') : ''}`)
+    } catch (err) {
+      alert('Import failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
+    } finally {
+      setImporting(false)
+    }
   }
 
   // ── Group rows ─────────────────────────────────────────────────────────────
@@ -311,6 +645,27 @@ export default function PlanPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
 
+      {/* Hidden CSV file input */}
+      <input
+        ref={csvInputRef}
+        type="file"
+        accept=".csv"
+        style={{ display: 'none' }}
+        onChange={e => {
+          if (e.target.files?.[0]) importCSV(e.target.files[0])
+          e.target.value = ''
+        }}
+      />
+
+      {/* Add Plan Item modal */}
+      {showAddModal && (
+        <AddPlanItemModal
+          categories={categories}
+          onClose={() => setShowAddModal(false)}
+          onSaved={refreshAll}
+        />
+      )}
+
       {/* Header */}
       <div style={{
         padding: '24px 32px 0',
@@ -325,6 +680,39 @@ export default function PlanPage() {
             <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
               {tab === 'monthly' ? monthLabel : 'Full year 2026'}
             </p>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              onClick={exportCSV}
+              style={{
+                padding: '8px 14px', background: 'transparent', color: 'var(--text-secondary)',
+                border: '1px solid var(--border-strong)', borderRadius: '8px',
+                fontSize: '13px', fontWeight: 500, cursor: 'pointer',
+              }}
+            >
+              Export CSV
+            </button>
+            <button
+              onClick={() => csvInputRef.current?.click()}
+              disabled={importing}
+              style={{
+                padding: '8px 14px', background: 'transparent', color: 'var(--text-secondary)',
+                border: '1px solid var(--border-strong)', borderRadius: '8px',
+                fontSize: '13px', fontWeight: 500, cursor: importing ? 'wait' : 'pointer',
+              }}
+            >
+              {importing ? 'Importing…' : 'Import CSV'}
+            </button>
+            <button
+              onClick={() => setShowAddModal(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '8px 16px', background: 'var(--accent)', color: '#ffffff',
+                border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              + Add Plan Item
+            </button>
           </div>
         </div>
 

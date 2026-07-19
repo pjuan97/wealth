@@ -85,6 +85,15 @@ const MONTHS = [
   { key: '2026-12', label: 'December' },
 ]
 
+// Default the Monthly Detail tab to today's month, clamped to the range this
+// app tracks (2026) — a fixed default meant a user whose Plan lives outside
+// April (like Dani's Jul-Dec data) would land on an empty month.
+function getDefaultMonth(): string {
+  const todayKey = new Date().toISOString().slice(0, 7)
+  if (MONTHS.some(m => m.key === todayKey)) return todayKey
+  return todayKey < MONTHS[0].key ? MONTHS[0].key : MONTHS[MONTHS.length - 1].key
+}
+
 const MONTH_SHORT: Record<string, string> = {
   '2026-01': 'Jan', '2026-02': 'Feb', '2026-03': 'Mar',
   '2026-04': 'Apr', '2026-05': 'May', '2026-06': 'Jun',
@@ -470,7 +479,7 @@ function AddPlanItemModal({
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function PlanPage() {
   const [tab, setTab] = useState<'monthly' | 'annual'>('monthly')
-  const [selectedMonth, setSelectedMonth] = useState('2026-04')
+  const [selectedMonth, setSelectedMonth] = useState(getDefaultMonth)
 
   // Monthly state
   const [rows, setRows] = useState<PlanRow[]>([])

@@ -9,6 +9,7 @@ interface ImportRow {
   level_2?: string
   level_3?: string | null
   plan?: string | number
+  currency?: string
 }
 
 // POST /api/plan/import - bulk create/update plan rows from a parsed CSV.
@@ -46,6 +47,7 @@ export async function POST(request: NextRequest) {
       const level2 = (r.level_2 || '').trim()
       const level3 = (r.level_3 || '').trim() || null
       const planNum = Number(r.plan)
+      const currency: 'COP' | 'USD' = (r.currency || '').trim().toUpperCase() === 'USD' ? 'USD' : 'COP'
 
       if (!VALID_PLAN_MONTHS.includes(month)) {
         errors.push(`Row ${rowNum}: invalid month "${month}"`)
@@ -68,7 +70,7 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      await upsertPlanRow(userId, month, eventType, level2, level3, planNum)
+      await upsertPlanRow(userId, month, eventType, level2, level3, planNum, currency)
       updated++
     }
 

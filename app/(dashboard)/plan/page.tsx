@@ -9,6 +9,8 @@ interface CategoryDef {
   level_2: string
   level_3: string | null
 }
+type Currency = 'COP' | 'USD'
+
 interface PlanRow {
   id: number
   month_label: string
@@ -17,21 +19,26 @@ interface PlanRow {
   level_3: string | null
   base: number
   inflation: number
+  currency: Currency
   plan: number
   executed: number
   diff: number
   achievement: number | null
 }
 
-interface MonthlyTotals {
+interface CurrencyTotals {
   income_plan: number
   income_exec: number
   expense_plan: number
   expense_exec: number
 }
 
-interface AnnualSummaryRow {
-  month: string
+interface MonthlyTotals {
+  COP: CurrencyTotals
+  USD: CurrencyTotals
+}
+
+interface AnnualCurrencySummary {
   income_plan: number
   income_exec: number
   expense_plan: number
@@ -42,10 +49,17 @@ interface AnnualSummaryRow {
   savings_rate_exec: number
 }
 
+interface AnnualSummaryRow {
+  month: string
+  COP: AnnualCurrencySummary
+  USD: AnnualCurrencySummary
+}
+
 interface CategoryAnnualRow {
   eventType: string
   level_2: string
   level_3: string | null
+  currency: Currency
   months: {
     month: string
     plan: number
@@ -86,6 +100,17 @@ function formatCOP(n: number) {
   }).format(n)
 }
 
+function formatUSD(n: number) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency', currency: 'USD',
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  }).format(n)
+}
+
+function formatMoney(n: number, currency: Currency) {
+  return currency === 'USD' ? formatUSD(n) : formatCOP(n)
+}
+
 function formatAchievementPct(n: number | null) {
   if (n === null) return '—'
   return `${(n * 100).toFixed(1)}%`
@@ -112,16 +137,18 @@ function formatVariance(diff: number, plan: number, eventType: string): {
 function EditableAmount({
   value,
   onSave,
+  currency = 'COP',
 }: {
   value: number
   onSave: (newValue: number) => Promise<void>
+  currency?: Currency
 }) {
   const [editing, setEditing] = useState(false)
   const [raw, setRaw] = useState('')
   const [saving, setSaving] = useState(false)
 
   const handleDoubleClick = () => {
-    setRaw(String(Math.round(value)))
+    setRaw(currency === 'USD' ? String(Math.round(value * 100) / 100) : String(Math.round(value)))
     setEditing(true)
   }
 
@@ -175,7 +202,7 @@ function EditableAmount({
         paddingBottom: '1px',
       }}
     >
-      {formatCOP(value)}
+      {formatMoney(value, currency)}
     </span>
   )
 }
@@ -193,6 +220,7 @@ function AddPlanItemModal({
   const [eventType, setEventType] = useState<'Income' | 'Expense'>('Expense')
   const [level2, setLevel2] = useState('')
   const [level3, setLevel3] = useState('')
+  const [currency, setCurrency] = useState<Currency>('COP')
   const [amount, setAmount] = useState('')
   const [months, setMonths] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
@@ -238,6 +266,7 @@ function AddPlanItemModal({
           level_3: level3 || null,
           months: [...months],
           amount: amountNum,
+          currency,
         }),
       })
       const data = await res.json()
@@ -338,17 +367,30 @@ function AddPlanItemModal({
             </select>
           </div>
 
-          {/* Amount */}
-          <div>
-            <label style={fieldLabel}>Amount (COP)</label>
-            <input
-              type="text"
-              inputMode="decimal"
-              placeholder="e.g. 500000"
-              value={amount}
-              onChange={e => setAmount(e.target.value)}
-              style={selectStyle}
-            />
+          {/* Currency + Amount */}
+          <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: '10px' }}>
+            <div>
+              <label style={fieldLabel}>Currency</label>
+              <select
+                style={selectStyle}
+                value={currency}
+                onChange={e => setCurrency(e.target.value as Currency)}
+              >
+                <option value="COP">COP</option>
+                <option value="USD">USD</option>
+              </select>
+            </div>
+            <div>
+              <label style={fieldLabel}>Amount</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder={currency === 'USD' ? 'e.g. 500.00' : 'e.g. 500000'}
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                style={selectStyle}
+              />
+            </div>
           </div>
 
           {/* Months */}
@@ -553,6 +595,7 @@ export default function PlanPage() {
         level_2: obj.level_2 || '',
         level_3: obj.level_3 || null,
         plan: obj.plan || '0',
+        currency: obj.currency || 'COP',
       }
     }).filter(r => r.month_label && r.event_type && r.level_2)
 
@@ -576,7 +619,14 @@ export default function PlanPage() {
   }
 
   // ── Group rows ─────────────────────────────────────────────────────────────
+  // A user's Plan is realistically all one currency (per-row currency is still
+  // respected for each line item) — group totals use the dominant currency of
+  // the rows being summed, falling back to COP when the group is empty.
+  const dominantCurrency = (rs: PlanRow[]): Currency => rs[0]?.currency ?? 'COP'
+
   const incomeRows = rows.filter(r => r.event_type === 'Income')
+  const incomeCurrency = dominantCurrency(incomeRows)
+  const expenseCurrency = dominantCurrency(rows.filter(r => r.event_type === 'Expense'))
   const EXPENSE_ORDER = ['Life', 'Health', 'Travels', 'Others']
 
   const expenseByL2Raw = rows
@@ -641,6 +691,12 @@ export default function PlanPage() {
   const filteredCategoryRows = annualFilter === 'all'
     ? categoryRows
     : categoryRows.filter(r => r.eventType === annualFilter)
+
+  // Dominant currency for the Cashflow Summary table (per-category rows below
+  // already carry their own `currency` and format correctly regardless).
+  const annualCurrency: Currency = annualSummary.some(r =>
+    r.USD.income_plan !== 0 || r.USD.income_exec !== 0 || r.USD.expense_plan !== 0 || r.USD.expense_exec !== 0
+  ) ? 'USD' : 'COP'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -779,9 +835,14 @@ export default function PlanPage() {
             ))}
           </div>
 
-          {/* Summary cards */}
-          {totals && (
-            <div style={{
+          {/* Summary cards — one row per currency that actually has data */}
+          {totals && (['COP', 'USD'] as const)
+            .filter(c => {
+              const t = totals[c]
+              return t.income_plan !== 0 || t.income_exec !== 0 || t.expense_plan !== 0 || t.expense_exec !== 0
+            })
+            .map(c => (
+            <div key={c} style={{
               padding: '16px 32px',
               borderBottom: '1px solid var(--border)',
               display: 'grid',
@@ -790,10 +851,10 @@ export default function PlanPage() {
               flexShrink: 0,
             }}>
               {[
-                { label: 'Income Plan', value: totals.income_plan, muted: false },
-                { label: 'Income Executed', value: totals.income_exec, muted: false },
-                { label: 'Expense Plan', value: totals.expense_plan, muted: true },
-                { label: 'Expense Executed', value: totals.expense_exec, muted: true },
+                { label: `Income Plan (${c})`, value: totals[c].income_plan },
+                { label: `Income Executed (${c})`, value: totals[c].income_exec },
+                { label: `Expense Plan (${c})`, value: totals[c].expense_plan },
+                { label: `Expense Executed (${c})`, value: totals[c].expense_exec },
               ].map(card => (
                 <div key={card.label} style={{
                   background: 'var(--bg-surface)',
@@ -805,12 +866,12 @@ export default function PlanPage() {
                     {card.label}
                   </p>
                   <p style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                    {formatCOP(card.value)}
+                    {formatMoney(card.value, c)}
                   </p>
                 </div>
               ))}
             </div>
-          )}
+          ))}
 
           {/* Table */}
           <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -846,15 +907,15 @@ export default function PlanPage() {
                       {expandedGroups.has('Income') ? '▾' : '▸'} Income
                     </td>
                     <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                      {formatCOP(incomeRows.reduce((s, r) => s + r.plan, 0))}
+                      {formatMoney(incomeRows.reduce((s, r) => s + r.plan, 0), incomeCurrency)}
                     </td>
                     <td style={{ ...tdStyle(), fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                      {formatCOP(incomeRows.reduce((s, r) => s + r.executed, 0))}
+                      {formatMoney(incomeRows.reduce((s, r) => s + r.executed, 0), incomeCurrency)}
                     </td>
                     <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                       {(() => {
                         const diff = incomeRows.reduce((s, r) => s + r.diff, 0)
-                        return `${diff >= 0 ? '+' : ''}${formatCOP(diff)}`
+                        return `${diff >= 0 ? '+' : ''}${formatMoney(diff, incomeCurrency)}`
                       })()}
                     </td>
                     <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums' }}>
@@ -878,13 +939,13 @@ export default function PlanPage() {
                         {row.level_3 && <span style={{ color: 'var(--text-primary)', marginLeft: '6px' }}>· {row.level_3}</span>}
                       </td>
                       <td style={tdStyle()}>
-                        <EditableAmount value={row.plan} onSave={v => updatePlan(row.id, v)} />
+                        <EditableAmount value={row.plan} currency={row.currency} onSave={v => updatePlan(row.id, v)} />
                       </td>
                       <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-                        {formatCOP(row.executed)}
+                        {formatMoney(row.executed, row.currency)}
                       </td>
                       <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                        {`${row.diff >= 0 ? '+' : ''}${formatCOP(row.diff)}`}
+                        {`${row.diff >= 0 ? '+' : ''}${formatMoney(row.diff, row.currency)}`}
                       </td>
                       <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums' }}>
                         {(() => {
@@ -911,33 +972,34 @@ export default function PlanPage() {
                       {expandedGroups.has('Expenses') ? '▾' : '▸'} Expenses
                     </td>
                     <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontWeight: 700, fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
-                      {totals ? formatCOP(totals.expense_plan) : '—'}
+                      {totals ? formatMoney(totals[expenseCurrency].expense_plan, expenseCurrency) : '—'}
                     </td>
                     <td style={{ ...tdStyle(), fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
-                      {totals ? formatCOP(totals.expense_exec) : '—'}
+                      {totals ? formatMoney(totals[expenseCurrency].expense_exec, expenseCurrency) : '—'}
                     </td>
                     <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
                       {totals ? (() => {
-                        const diff = totals.expense_exec - totals.expense_plan
-                        return `${diff >= 0 ? '+' : ''}${formatCOP(diff)}`
+                        const diff = totals[expenseCurrency].expense_exec - totals[expenseCurrency].expense_plan
+                        return `${diff >= 0 ? '+' : ''}${formatMoney(diff, expenseCurrency)}`
                       })() : '—'}
                     </td>
                     <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
                       {totals && (() => {
-                        const v = formatVariance(totals.expense_exec - totals.expense_plan, totals.expense_plan, 'Expense')
+                        const v = formatVariance(totals[expenseCurrency].expense_exec - totals[expenseCurrency].expense_plan, totals[expenseCurrency].expense_plan, 'Expense')
                         return <span style={{ fontSize: '12px', fontWeight: 600, color: v.color }}>{v.text}</span>
                       })()}
                     </td>
                   </tr>
 
-                  {/* ── EXPENSE SUBCATEGORIES (Life, Health, Travels, Others) */}
-                  {expandedGroups.has('Expenses') && EXPENSE_ORDER.filter(l2 => expenseByL2[l2]).map(l2 => {
+                  {/* ── EXPENSE SUBCATEGORIES (all Level 2 groups present in this user's data) */}
+                  {expandedGroups.has('Expenses') && Object.keys(expenseByL2).map(l2 => {
                     const l2rows = expenseByL2[l2]
                     const groupKey = `Expense_${l2}`
                     const isExpanded = expandedGroups.has(groupKey)
                     const groupPlan = l2rows.reduce((s, r) => s + r.plan, 0)
                     const groupExec = l2rows.reduce((s, r) => s + r.executed, 0)
                     const groupDiff = groupExec - groupPlan
+                    const groupCurrency = dominantCurrency(l2rows)
 
                     return [
                       // Subcategory header
@@ -956,13 +1018,13 @@ export default function PlanPage() {
                           {isExpanded ? '▾' : '▸'} {l2}
                         </td>
                         <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-                          {formatCOP(groupPlan)}
+                          {formatMoney(groupPlan, groupCurrency)}
                         </td>
                         <td style={{ ...tdStyle(), fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                          {formatCOP(groupExec)}
+                          {formatMoney(groupExec, groupCurrency)}
                         </td>
                         <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                          {`${groupDiff >= 0 ? '+' : ''}${formatCOP(groupDiff)}`}
+                          {`${groupDiff >= 0 ? '+' : ''}${formatMoney(groupDiff, groupCurrency)}`}
                         </td>
                         <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums' }}>
                           {(() => {
@@ -983,13 +1045,13 @@ export default function PlanPage() {
                             {row.level_3 || row.level_2}
                           </td>
                           <td style={tdStyle()}>
-                            <EditableAmount value={row.plan} onSave={v => updatePlan(row.id, v)} />
+                            <EditableAmount value={row.plan} currency={row.currency} onSave={v => updatePlan(row.id, v)} />
                           </td>
                           <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                            {formatCOP(row.executed)}
+                            {formatMoney(row.executed, row.currency)}
                           </td>
                           <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                            {`${row.diff >= 0 ? '+' : ''}${formatCOP(row.diff)}`}
+                            {`${row.diff >= 0 ? '+' : ''}${formatMoney(row.diff, row.currency)}`}
                           </td>
                           <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums' }}>
                             {(() => {
@@ -1028,7 +1090,7 @@ export default function PlanPage() {
               }}>
                 <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
                   <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Cashflow Summary
+                    Cashflow Summary ({annualCurrency})
                   </p>
                   <p style={{ fontSize: '11px', color: 'var(--text-primary)', marginTop: '2px' }}>
                     Plan vs Executed by month · Double row: Plan / Executed
@@ -1053,8 +1115,8 @@ export default function PlanPage() {
                         { label: 'Savings %', planKey: 'savings_rate_plan' as const, execKey: 'savings_rate_exec' as const },
                       ].map(({ label, planKey, execKey }) => {
                         const isRate = label === 'Savings %'
-                        const totalPlan = isRate ? 0 : annualSummary.reduce((s, r) => s + (r[planKey] as number), 0)
-                        const totalExec = isRate ? 0 : annualSummary.reduce((s, r) => s + (r[execKey] as number), 0)
+                        const totalPlan = isRate ? 0 : annualSummary.reduce((s, r) => s + r[annualCurrency][planKey], 0)
+                        const totalExec = isRate ? 0 : annualSummary.reduce((s, r) => s + r[annualCurrency][execKey], 0)
 
                         return [
                           // Plan row
@@ -1066,23 +1128,19 @@ export default function PlanPage() {
                             {annualSummary.map(row => (
                               <td key={row.month} style={{ padding: '8px 16px 2px', fontSize: '11px', textAlign: 'right', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                                 {isRate
-                                  ? formatAchievementPct(row[planKey] as number)
-                                  : formatCOP(row[planKey] as number)}
+                                  ? formatAchievementPct(row[annualCurrency][planKey])
+                                  : formatMoney(row[annualCurrency][planKey], annualCurrency)}
                               </td>
                             ))}
                             <td style={{ padding: '8px 16px 2px', fontSize: '11px', textAlign: 'right', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                              {isRate ? '—' : formatCOP(totalPlan)}
+                              {isRate ? '—' : formatMoney(totalPlan, annualCurrency)}
                             </td>
                           </tr>,
                           // Exec row
                           <tr key={`${label}_exec`} style={{ borderBottom: '1px solid var(--border)' }}>
                             <td style={{ padding: '2px 16px 10px 20px', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }} />
                             {annualSummary.map(row => {
-                              const val = row[execKey] as number
-                              const plan = row[planKey] as number
-                              const isGood = label === 'Expense'
-                                ? val <= plan
-                                : val >= plan
+                              const val = row[annualCurrency][execKey]
                               return (
                                 <td key={row.month} style={{
                                   padding: '2px 16px 10px',
@@ -1094,12 +1152,12 @@ export default function PlanPage() {
                                 }}>
                                   {isRate
                                     ? formatAchievementPct(val)
-                                    : formatCOP(val)}
+                                    : formatMoney(val, annualCurrency)}
                                 </td>
                               )
                             })}
                             <td style={{ padding: '2px 16px 10px', fontSize: '13px', fontWeight: 700, textAlign: 'right', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                              {isRate ? '—' : formatCOP(totalExec)}
+                              {isRate ? '—' : formatMoney(totalExec, annualCurrency)}
                             </td>
                           </tr>,
                         ]
@@ -1181,7 +1239,7 @@ export default function PlanPage() {
                               ) : (
                                 <div>
                                   <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                                    {formatCOP(m.exec)}
+                                    {formatMoney(m.exec, cat.currency)}
                                   </div>
                                   {m.plan > 0 && (
                                     <div style={{ fontSize: '10px', color: 'var(--text-primary)', marginTop: '1px' }}>

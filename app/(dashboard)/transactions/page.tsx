@@ -37,15 +37,16 @@ interface DuplicateGroup {
   }>
 }
 
-const LEVEL2_BY_EVENT_TYPE: Record<string, string[]> = {
-  'Income': ['Salary', 'Other Incomes'],
-  'Expense': ['Life', 'Health', 'Travels', 'Others'],
-  'Transfer': ['Financial Movement'],
-  'Investment': ['Fiduciary', 'ETFs', 'Collective Investment Funds', 'Companies', 'Bank (Cash)'],
-  'Withdrawal': ['Fiduciary', 'ETFs', 'Collective Investment Funds', 'Companies', 'Bank (Cash)'],
-  'Debt_Payment': ['Credit Cards', 'Loans'],
-  'Debt_Increase': ['Credit Cards', 'Loans'],
-  'Opening_Balance': ['Fiduciary', 'ETFs', 'Collective Investment Funds', 'Companies', 'Bank (Cash)', 'Salary', 'Other Incomes'],
+// event_type -> the CategoryDef.level_1 bucket it draws its Level 2 options from.
+const EVENT_TYPE_TO_LEVEL1: Record<string, string> = {
+  Opening_Balance: 'Income',
+  Income: 'Income',
+  Expense: 'Expense',
+  Transfer: 'Financial Movement',
+  Investment: 'Equity',
+  Withdrawal: 'Financial Movement',
+  Debt_Payment: 'Debt',
+  Debt_Increase: 'Debt',
 }
 
 const MONTHS = [
@@ -235,11 +236,13 @@ export default function TransactionsPage() {
   const [dataSourceOptions, setDataSourceOptions] = useState<{
     eventTypes: string[]
     level2: string[]
+    level2ByLevel1: Record<string, string[]>
     accounts: string[]
     level3ByLevel2: Record<string, string[]>
   }>({
     eventTypes: [],
     level2: [],
+    level2ByLevel1: {},
     accounts: [],
     level3ByLevel2: {},
   })
@@ -255,15 +258,20 @@ export default function TransactionsPage() {
       const categories = data.categories || []
       const level2 = [...new Set(categories.map((c: {level_2: string}) => c.level_2))] as string[]
 
+      const level2ByLevel1: Record<string, string[]> = {}
       const level3ByLevel2: Record<string, string[]> = {}
       for (const cat of categories) {
+        if (!level2ByLevel1[cat.level_1]) level2ByLevel1[cat.level_1] = []
+        if (!level2ByLevel1[cat.level_1].includes(cat.level_2)) {
+          level2ByLevel1[cat.level_1].push(cat.level_2)
+        }
         if (!level3ByLevel2[cat.level_2]) level3ByLevel2[cat.level_2] = []
         if (cat.level_3 && !level3ByLevel2[cat.level_2].includes(cat.level_3)) {
           level3ByLevel2[cat.level_2].push(cat.level_3)
         }
       }
 
-      setDataSourceOptions({ eventTypes, level2, accounts, level3ByLevel2 })
+      setDataSourceOptions({ eventTypes, level2, level2ByLevel1, accounts, level3ByLevel2 })
     }).catch(console.error)
   }, [])
 
@@ -1010,7 +1018,7 @@ export default function TransactionsPage() {
                     <InlineEditCell
                       value={t.level_2}
                       type="select"
-                      options={LEVEL2_BY_EVENT_TYPE[t.event_type || ''] || dataSourceOptions.level2}
+                      options={dataSourceOptions.level2ByLevel1[EVENT_TYPE_TO_LEVEL1[t.event_type || ''] || t.event_type || ''] || dataSourceOptions.level2}
                       onSave={async v => {
                         await updateTransactionField(t.id, 'level_2', v)
                         // Reset level_3 if not valid for new level_2

@@ -30,18 +30,27 @@ export async function GET(request: NextRequest) {
     const planMap = new Map<string, number>(
       plans.map(p => [`${p.month_label}||${p.event_type}||${p.level_2}||${p.level_3 || ''}`, Number(p.plan)])
     )
+    // A category's currency is assumed consistent across months — take it from any existing row.
+    const currencyMap = new Map<string, string>()
+    for (const p of plans) {
+      const catKey = `${p.event_type}||${p.level_2}||${p.level_3 || ''}`
+      if (!currencyMap.has(catKey)) currencyMap.set(catKey, p.currency)
+    }
 
-    const lines = ['month_label,event_type,level_2,level_3,plan']
+    const lines = ['month_label,event_type,level_2,level_3,plan,currency']
     for (const month of VALID_PLAN_MONTHS) {
       for (const cat of categories) {
-        const key = `${month}||${cat.level_1}||${cat.level_2}||${cat.level_3 || ''}`
+        const catKey = `${cat.level_1}||${cat.level_2}||${cat.level_3 || ''}`
+        const key = `${month}||${catKey}`
         const plan = planMap.get(key) ?? 0
+        const currency = currencyMap.get(catKey) ?? 'COP'
         lines.push([
           month,
           cat.level_1,
           csvEscape(cat.level_2),
           cat.level_3 ? csvEscape(cat.level_3) : '',
           plan,
+          currency,
         ].join(','))
       }
     }

@@ -19,7 +19,8 @@ export async function upsertPlanRow(
   eventType: string,
   level2: string,
   level3: string | null,
-  amount: number
+  amount: number,
+  currency: 'COP' | 'USD' = 'COP'
 ) {
   const existing = await prisma.planVsAchievement.findFirst({
     where: {
@@ -34,7 +35,7 @@ export async function upsertPlanRow(
   if (existing) {
     return prisma.planVsAchievement.update({
       where: { id: existing.id },
-      data: { base: amount, plan: amount },
+      data: { base: amount, plan: amount, currency },
     })
   }
 
@@ -50,6 +51,7 @@ export async function upsertPlanRow(
       inflation: 0,
       seasonality: 0,
       plan: amount,
+      currency,
     },
   })
 }

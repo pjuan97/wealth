@@ -63,6 +63,7 @@ model PlanVsAchievement {
   inflation    Decimal  @db.Decimal(6, 4)
   seasonality  Decimal? @db.Decimal(6, 4)
   plan         Decimal  @db.Decimal(14, 2)
+  currency     String   @default("COP") @db.VarChar(10)
 
   @@unique([month_label, event_type, level_2, level_3, user_id])
   @@index([month_label])

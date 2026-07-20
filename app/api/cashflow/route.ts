@@ -7,40 +7,44 @@ const MONTHS = [
   '2026-07','2026-08','2026-09','2026-10','2026-11','2026-12',
 ]
 
-// Get real balance for a set of accounts up to end of a month
+function getCurrentMonth(): string {
+  const todayKey = new Date().toISOString().slice(0, 7)
+  if (MONTHS.includes(todayKey)) return todayKey
+  return todayKey < MONTHS[0] ? MONTHS[0] : MONTHS[MONTHS.length - 1]
+}
+
+// Get real balance for a set of accounts up to end of a month, in both
+// currencies — whichever the account actually transacts in will be non-zero.
 async function getAccountBalance(
   accounts: string[],
   upToMonth: string,
   userId: number
-): Promise<number> {
-  if (!accounts.length) return 0
+): Promise<{ cop: number; usd: number }> {
+  if (!accounts.length) return { cop: 0, usd: 0 }
 
   const monthEnd = new Date(`${upToMonth}-01`)
   monthEnd.setMonth(monthEnd.getMonth() + 1)
 
   const [inflow, outflow] = await Promise.all([
     prisma.transaction.aggregate({
-      where: {
-        user_id: userId,
-        to_account: { in: accounts },
-        date: { lt: monthEnd },
-      },
-      _sum: { amount: true },
+      where: { user_id: userId, to_account: { in: accounts }, date: { lt: monthEnd } },
+      _sum: { amount: true, usd_amount: true },
     }),
     prisma.transaction.aggregate({
-      where: {
-        user_id: userId,
-        from_account: { in: accounts },
-        date: { lt: monthEnd },
-      },
-      _sum: { amount: true },
+      where: { user_id: userId, from_account: { in: accounts }, date: { lt: monthEnd } },
+      _sum: { amount: true, usd_amount: true },
     }),
   ])
 
-  return Number(inflow._sum.amount || 0) - Number(outflow._sum.amount || 0)
+  return {
+    cop: Number(inflow._sum.amount || 0) - Number(outflow._sum.amount || 0),
+    usd: Number(inflow._sum.usd_amount || 0) - Number(outflow._sum.usd_amount || 0),
+  }
 }
 
-// Get executed income/expense for a month from transactions
+// Get executed income/expense for a month from transactions, separately in
+// COP and USD (a Plan row's currency decides which of the two it's compared
+// against — avoids FX-rate drift creating false variance for USD plans).
 async function getMonthExecuted(monthLabel: string, userId: number) {
   const txs = await prisma.transaction.findMany({
     where: {
@@ -48,41 +52,54 @@ async function getMonthExecuted(monthLabel: string, userId: number) {
       month_label: monthLabel,
       event_type: { in: ['Income', 'Expense'] },
     },
-    select: { event_type: true, level_2: true, level_3: true, amount: true },
+    select: { event_type: true, level_2: true, level_3: true, amount: true, usd_amount: true },
   })
 
-  const incomeExec = txs
-    .filter(t => t.event_type === 'Income')
-    .reduce((s, t) => s + Number(t.amount), 0)
-
-  const expenseExec = txs
-    .filter(t => t.event_type === 'Expense')
-    .reduce((s, t) => s + Number(t.amount), 0)
-
-  // By category
-  const byCategory: Record<string, number> = {}
-  for (const tx of txs) {
-    const key = `${tx.level_2}||${tx.level_3 || ''}`
-    byCategory[key] = (byCategory[key] || 0) + Number(tx.amount)
+  const build = (field: 'amount' | 'usd_amount') => {
+    const incomeExec = txs
+      .filter(t => t.event_type === 'Income')
+      .reduce((s, t) => s + Number(t[field] || 0), 0)
+    const expenseExec = txs
+      .filter(t => t.event_type === 'Expense')
+      .reduce((s, t) => s + Number(t[field] || 0), 0)
+    const byCategory: Record<string, number> = {}
+    for (const tx of txs) {
+      const val = Number(tx[field] || 0)
+      if (val === 0) continue
+      const key = `${tx.level_2}||${tx.level_3 || ''}`
+      byCategory[key] = (byCategory[key] || 0) + val
+    }
+    return { incomeExec, expenseExec, byCategory }
   }
 
-  return { incomeExec, expenseExec, byCategory }
+  return { cop: build('amount'), usd: build('usd_amount') }
 }
 
 export async function GET(request: NextRequest) {
   const session = await verifyRequestSession(request)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const userId = session.id
   const { searchParams } = new URL(request.url)
   const openingAccountsParam = searchParams.get('openingAccounts')
-  const openingAccounts = openingAccountsParam
-    ? openingAccountsParam.split(',')
-    : ['Bancolombia (Cash)', 'Dollar App (Cash)']
 
-  const CURRENT_MONTH = '2026-06'
-  const userId = session.id
+  const CURRENT_MONTH = getCurrentMonth()
 
   try {
+    // Default opening accounts to this user's own active cash accounts —
+    // a hardcoded name from another user's profile would silently zero out.
+    let openingAccounts: string[]
+    if (openingAccountsParam) {
+      openingAccounts = openingAccountsParam.split(',')
+    } else {
+      const defaultCashAccounts = await prisma.accountDef.findMany({
+        where: { user_id: userId, type: 'cash', is_active: true },
+        select: { name: true },
+        orderBy: { name: 'asc' },
+      })
+      openingAccounts = defaultCashAccounts.map(a => a.name)
+    }
+
     // Get all plan data
     const plans = await prisma.planVsAchievement.findMany({
       where: { user_id: userId },
@@ -96,17 +113,13 @@ export async function GET(request: NextRequest) {
       take: 180,
     })
 
-    // Calculate AVG FX rate from available data
     const avgFxRate = fxRates.length > 0
       ? fxRates.reduce((s, r) => s + Number(r.rate_to_cop), 0) / fxRates.length
       : 3672
 
-    // Get monthly FX rates for conversion
     const monthlyFx: Record<string, number> = {}
     for (const month of MONTHS) {
-      const monthRates = fxRates.filter(r =>
-        r.date.toISOString().startsWith(month)
-      )
+      const monthRates = fxRates.filter(r => r.date.toISOString().startsWith(month))
       monthlyFx[month] = monthRates.length > 0
         ? monthRates.reduce((s, r) => s + Number(r.rate_to_cop), 0) / monthRates.length
         : avgFxRate
@@ -117,16 +130,18 @@ export async function GET(request: NextRequest) {
       plans.map(p => `${p.event_type}||${p.level_2}||${p.level_3 || ''}`)
     )].sort()
 
-    // Get executed data for all months
     const executedByMonth: Record<string, Awaited<ReturnType<typeof getMonthExecuted>>> = {}
     for (const month of MONTHS) {
       executedByMonth[month] = await getMonthExecuted(month, userId)
     }
 
-    // Build category rows
     const categoryRows = categoryKeys.map(ck => {
       const [eventType, level_2, level_3] = ck.split('||')
       const key = `${level_2}||${level_3}`
+      // A category's currency is assumed consistent across months — take it from any row that has it.
+      const currency = plans.find(p =>
+        p.event_type === eventType && p.level_2 === level_2 && (p.level_3 || '') === level_3
+      )?.currency || 'COP'
 
       const monthData = MONTHS.map(m => {
         const plan = plans.find(p =>
@@ -135,7 +150,8 @@ export async function GET(request: NextRequest) {
           p.level_2 === level_2 &&
           (p.level_3 || '') === level_3
         )
-        const executed = executedByMonth[m].byCategory[key] || 0
+        const execMap = currency === 'USD' ? executedByMonth[m].usd : executedByMonth[m].cop
+        const executed = execMap.byCategory[key] || 0
         const planVal = plan ? Number(plan.plan) : 0
         const diff = executed - planVal
         const variance = planVal > 0 ? diff / planVal : null
@@ -151,6 +167,7 @@ export async function GET(request: NextRequest) {
         eventType,
         level_2,
         level_3: level_3 || null,
+        currency,
         months: monthData,
         total: {
           plan: totalPlan,
@@ -161,72 +178,65 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Build monthly summary with ROLLING opening balance
-    const monthlySummary = []
-    let rollingBalance = 0
+    // Build monthly summary with ROLLING opening balance, computed separately per currency.
+    const openingBalanceStart = await getAccountBalance(openingAccounts, '2025-12', userId)
 
-    for (let i = 0; i < MONTHS.length; i++) {
-      const m = MONTHS[i]
+    const buildMonthlySummary = (curr: 'cop' | 'usd') => {
+      const rows = []
+      let rollingBalance = curr === 'cop' ? openingBalanceStart.cop : openingBalanceStart.usd
+
+      for (let i = 0; i < MONTHS.length; i++) {
+        const m = MONTHS[i]
+        const isPast = m < CURRENT_MONTH
+        const isCurrent = m === CURRENT_MONTH
+
+        const openingBalance = rollingBalance
+        const exec = executedByMonth[m][curr]
+        const mPlans = plans.filter(p => p.month_label === m && p.currency.toLowerCase() === curr)
+
+        const incomePlan = mPlans.filter(p => p.event_type === 'Income').reduce((s, p) => s + Number(p.plan), 0)
+        const expensePlan = mPlans.filter(p => p.event_type === 'Expense').reduce((s, p) => s + Number(p.plan), 0)
+        const incomeExec = exec.incomeExec
+        const expenseExec = exec.expenseExec
+
+        // For future months, use plan as projection.
+        const incomeEffective = (isPast || isCurrent) ? incomeExec : incomePlan
+        const expenseEffective = (isPast || isCurrent) ? expenseExec : expensePlan
+
+        const resultadoPlan = incomePlan - expensePlan
+        const resultadoExec = incomeExec - expenseExec
+        const resultadoEffective = incomeEffective - expenseEffective
+
+        const balancePlan = openingBalance + resultadoPlan
+        const balanceExec = openingBalance + resultadoExec
+        const balanceEffective = openingBalance + resultadoEffective
+
+        rollingBalance = (isPast || isCurrent) ? balanceExec : balancePlan
+
+        rows.push({
+          openingBalance, incomePlan, incomeExec, expensePlan, expenseExec,
+          resultadoPlan, resultadoExec, balancePlan, balanceExec,
+        })
+      }
+      return rows
+    }
+
+    const copSummary = buildMonthlySummary('cop')
+    const usdSummary = buildMonthlySummary('usd')
+
+    const monthlySummary = MONTHS.map((m, i) => {
       const isPast = m < CURRENT_MONTH
       const isCurrent = m === CURRENT_MONTH
-
-      // Opening Balance
-      let openingBalance: number
-      if (i === 0) {
-        // January: real balance from selected accounts at start of year
-        openingBalance = await getAccountBalance(openingAccounts, '2025-12', userId)
-      } else {
-        // Subsequent months: balance from previous month (rolling)
-        openingBalance = rollingBalance
-      }
-
-      const exec = executedByMonth[m]
-      const mPlans = plans.filter(p => p.month_label === m)
-
-      const incomePlan = mPlans
-        .filter(p => p.event_type === 'Income')
-        .reduce((s, p) => s + Number(p.plan), 0)
-      const expensePlan = mPlans
-        .filter(p => p.event_type === 'Expense')
-        .reduce((s, p) => s + Number(p.plan), 0)
-
-      const incomeExec = exec.incomeExec
-      const expenseExec = exec.expenseExec
-
-      // For future months, use plan as projection
-      const incomeEffective = (isPast || isCurrent) ? incomeExec : incomePlan
-      const expenseEffective = (isPast || isCurrent) ? expenseExec : expensePlan
-
-      const resultadoPlan = incomePlan - expensePlan
-      const resultadoExec = incomeExec - expenseExec
-      const resultadoEffective = incomeEffective - expenseEffective
-
-      const balancePlan = openingBalance + resultadoPlan
-      const balanceExec = openingBalance + resultadoExec
-      const balanceEffective = openingBalance + resultadoEffective
-
-      // Rolling balance: for past months use real, for future use projected
-      rollingBalance = (isPast || isCurrent) ? balanceExec : balancePlan
-
-      const fx = monthlyFx[m] || avgFxRate
-
-      monthlySummary.push({
+      return {
         month: m,
         isPast,
         isCurrent,
         isFuture: !isPast && !isCurrent,
-        openingBalance,
-        incomePlan,
-        incomeExec,
-        expensePlan,
-        expenseExec,
-        resultadoPlan,
-        resultadoExec,
-        balancePlan,
-        balanceExec,
-        fx,
-      })
-    }
+        fx: monthlyFx[m] || avgFxRate,
+        COP: copSummary[i],
+        USD: usdSummary[i],
+      }
+    })
 
     // Get available cash accounts for selector
     const cashAccounts = await prisma.accountDef.findMany({

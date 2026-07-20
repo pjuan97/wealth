@@ -26,6 +26,12 @@ export async function GET(request: NextRequest) {
 
   try {
     if (section === 'overview') {
+      // Every transaction has a real, valid COP-equivalent `amount` (auto-computed
+      // from usd_amount x fx_rate at entry time even for USD-native purchases) —
+      // unlike Plan, there's no "wrong currency" bug here, so totals stay COP
+      // unconditionally. Splitting by currency would silently drop any USD-tagged
+      // transaction (e.g. a USD credit card) from a COP-native user's totals.
+      const currency: 'COP' | 'USD' = 'COP'
       const transactions = await prisma.transaction.findMany({
         where: { user_id: userId, event_type: { in: ['Income', 'Expense'] } },
         select: { month_label: true, event_type: true, amount: true, level_2: true },
@@ -57,13 +63,18 @@ export async function GET(request: NextRequest) {
         return { month: m, label: MONTH_SHORT[m], salary, other }
       })
 
+      // Expense by category — dynamic Level 2 list from this user's actual data (not a fixed set).
+      const expenseCategories = [...new Set(
+        transactions.filter(t => t.event_type === 'Expense').map(t => t.level_2)
+      )].sort()
+
       const expenseByCategory = MONTHS.map(m => {
         const mTxs = transactions.filter(t => t.month_label === m && t.event_type === 'Expense')
-        const life = mTxs.filter(t => t.level_2 === 'Life').reduce((s, t) => s + Number(t.amount), 0)
-        const health = mTxs.filter(t => t.level_2 === 'Health').reduce((s, t) => s + Number(t.amount), 0)
-        const travels = mTxs.filter(t => t.level_2 === 'Travels').reduce((s, t) => s + Number(t.amount), 0)
-        const others = mTxs.filter(t => t.level_2 === 'Others').reduce((s, t) => s + Number(t.amount), 0)
-        return { month: m, label: MONTH_SHORT[m], life, health, travels, others }
+        const byLevel2: Record<string, number> = {}
+        for (const cat of expenseCategories) {
+          byLevel2[cat] = mTxs.filter(t => t.level_2 === cat).reduce((s, t) => s + Number(t.amount), 0)
+        }
+        return { month: m, label: MONTH_SHORT[m], byLevel2 }
       })
 
       const latestEquity = await prisma.equityExecuted.findMany({
@@ -76,20 +87,34 @@ export async function GET(request: NextRequest) {
       }
       const totalEquity = Array.from(equityMap.values()).reduce((s, v) => s + v, 0)
 
-      const [cashInflow, cashOutflow] = await Promise.all([
-        prisma.transaction.aggregate({
-          where: { user_id: userId, to_account: 'Bancolombia (Cash)' },
-          _sum: { amount: true },
-        }),
-        prisma.transaction.aggregate({
-          where: { user_id: userId, from_account: 'Bancolombia (Cash)' },
-          _sum: { amount: true },
-        }),
-      ])
-      const cashBalance = Number(cashInflow._sum.amount || 0) - Number(cashOutflow._sum.amount || 0)
+      // Cash balance — from this user's own active cash accounts, not a hardcoded name.
+      const cashAccountDefs = await prisma.accountDef.findMany({
+        where: { user_id: userId, type: 'cash', is_active: true },
+        select: { name: true },
+      })
+      const cashAccountNames = cashAccountDefs.map(a => a.name)
+      let cashBalance = 0
+      if (cashAccountNames.length) {
+        const [inflow, outflow] = await Promise.all([
+          prisma.transaction.aggregate({
+            where: { user_id: userId, to_account: { in: cashAccountNames } },
+            _sum: { amount: true },
+          }),
+          prisma.transaction.aggregate({
+            where: { user_id: userId, from_account: { in: cashAccountNames } },
+            _sum: { amount: true },
+          }),
+        ])
+        cashBalance = Number(inflow._sum.amount || 0) - Number(outflow._sum.amount || 0)
+      }
 
       return NextResponse.json({
-        monthlySummary, ytd, incomeBySource, expenseByCategory,
+        currency,
+        monthlySummary,
+        ytd,
+        incomeBySource,
+        expenseByCategory,
+        expenseCategories,
         netWorth: totalEquity + cashBalance, cashBalance, totalEquity,
       })
     }
@@ -102,17 +127,22 @@ export async function GET(request: NextRequest) {
         }),
         prisma.transaction.findMany({
           where: { user_id: userId, event_type: { in: ['Income', 'Expense'] } },
-          select: { month_label: true, event_type: true, level_2: true, level_3: true, amount: true },
+          select: { month_label: true, event_type: true, level_2: true, level_3: true, amount: true, usd_amount: true },
         }),
       ])
+
+      // Which currency this user's Plan is actually denominated in.
+      const currency: 'COP' | 'USD' = plans.some(p => p.currency === 'USD') &&
+        !plans.some(p => p.currency === 'COP') ? 'USD' : 'COP'
+      const field = currency === 'USD' ? 'usd_amount' : 'amount'
 
       const planVsExec = MONTHS.map(m => {
         const mPlans = plans.filter(p => p.month_label === m)
         const mTxs = transactions.filter(t => t.month_label === m)
         const incomePlan = mPlans.filter(p => p.event_type === 'Income').reduce((s, p) => s + Number(p.plan), 0)
         const expensePlan = mPlans.filter(p => p.event_type === 'Expense').reduce((s, p) => s + Number(p.plan), 0)
-        const incomeExec = mTxs.filter(t => t.event_type === 'Income').reduce((s, t) => s + Number(t.amount), 0)
-        const expenseExec = mTxs.filter(t => t.event_type === 'Expense').reduce((s, t) => s + Number(t.amount), 0)
+        const incomeExec = mTxs.filter(t => t.event_type === 'Income').reduce((s, t) => s + (Number(t[field]) || 0), 0)
+        const expenseExec = mTxs.filter(t => t.event_type === 'Expense').reduce((s, t) => s + (Number(t[field]) || 0), 0)
         return {
           month: m, label: MONTH_SHORT[m],
           incomePlan, incomeExec, expensePlan, expenseExec,
@@ -121,16 +151,20 @@ export async function GET(request: NextRequest) {
         }
       })
 
+      const expenseCategories = [...new Set(
+        plans.filter(p => p.event_type === 'Expense').map(p => p.level_2)
+      )].sort()
+
       const expenseByL2 = MONTHS.map(m => {
         const mTxs = transactions.filter(t => t.month_label === m && t.event_type === 'Expense')
-        const life = mTxs.filter(t => t.level_2 === 'Life').reduce((s, t) => s + Number(t.amount), 0)
-        const health = mTxs.filter(t => t.level_2 === 'Health').reduce((s, t) => s + Number(t.amount), 0)
-        const travels = mTxs.filter(t => t.level_2 === 'Travels').reduce((s, t) => s + Number(t.amount), 0)
-        const others = mTxs.filter(t => t.level_2 === 'Others').reduce((s, t) => s + Number(t.amount), 0)
-        return { month: m, label: MONTH_SHORT[m], life, health, travels, others }
+        const byLevel2: Record<string, number> = {}
+        for (const cat of expenseCategories) {
+          byLevel2[cat] = mTxs.filter(t => t.level_2 === cat).reduce((s, t) => s + (Number(t[field]) || 0), 0)
+        }
+        return { month: m, label: MONTH_SHORT[m], byLevel2 }
       })
 
-      return NextResponse.json({ planVsExec, expenseByL2 })
+      return NextResponse.json({ currency, planVsExec, expenseByL2, expenseCategories })
     }
 
     if (section === 'monthly') {
@@ -141,40 +175,53 @@ export async function GET(request: NextRequest) {
         }),
         prisma.transaction.findMany({
           where: { user_id: userId, month_label: month, event_type: { in: ['Income', 'Expense'] } },
-          select: { level_2: true, level_3: true, event_type: true, amount: true },
+          select: { level_2: true, level_3: true, event_type: true, amount: true, usd_amount: true },
         }),
       ])
 
-      const execMap = new Map<string, number>()
+      // A category's currency is assumed consistent — take it from any plan row that has it.
+      const currencyByCategory = new Map<string, 'COP' | 'USD'>()
+      for (const p of plans) {
+        const key = `${p.level_2}||${p.level_3 || ''}`
+        if (!currencyByCategory.has(key)) currencyByCategory.set(key, p.currency as 'COP' | 'USD')
+      }
+
+      const copExecMap = new Map<string, number>()
+      const usdExecMap = new Map<string, number>()
       for (const tx of transactions) {
         const key = `${tx.level_2}||${tx.level_3 || ''}`
-        execMap.set(key, (execMap.get(key) || 0) + Number(tx.amount))
+        const usdVal = Number(tx.usd_amount) || 0
+        if (usdVal !== 0) usdExecMap.set(key, (usdExecMap.get(key) || 0) + usdVal)
+        else copExecMap.set(key, (copExecMap.get(key) || 0) + (Number(tx.amount) || 0))
       }
 
       const rows = plans.map(p => {
         const key = `${p.level_2}||${p.level_3 || ''}`
+        const currency = p.currency as 'COP' | 'USD'
+        const execMap = currency === 'USD' ? usdExecMap : copExecMap
         const executed = execMap.get(key) || 0
         const plan = Number(p.plan)
         const diff = executed - plan
         const variance = plan > 0 ? diff / plan : null
         const achievement = plan > 0 ? executed / plan : null
         return {
-          event_type: p.event_type, level_2: p.level_2, level_3: p.level_3,
+          event_type: p.event_type, level_2: p.level_2, level_3: p.level_3, currency,
           plan, executed, diff, variance, achievement,
         }
       })
 
-      const income = transactions.filter(t => t.event_type === 'Income').reduce((s, t) => s + Number(t.amount), 0)
-      const expense = transactions.filter(t => t.event_type === 'Expense').reduce((s, t) => s + Number(t.amount), 0)
+      // Overall KPIs use whichever currency this month's plans are in (falls back to COP if no plan yet).
+      const monthCurrency: 'COP' | 'USD' = plans.length ? (plans[0].currency as 'COP' | 'USD') : 'COP'
+      const field = monthCurrency === 'USD' ? 'usd_amount' : 'amount'
+      const income = transactions.filter(t => t.event_type === 'Income').reduce((s, t) => s + (Number(t[field]) || 0), 0)
+      const expense = transactions.filter(t => t.event_type === 'Expense').reduce((s, t) => s + (Number(t[field]) || 0), 0)
 
-      const expensePie = ['Life', 'Health', 'Travels', 'Others'].map(l2 => ({
-        name: l2,
-        value: transactions.filter(t => t.event_type === 'Expense' && t.level_2 === l2)
-          .reduce((s, t) => s + Number(t.amount), 0),
-      })).filter(e => e.value > 0)
+      const expensePie = rows
+        .filter(r => r.event_type === 'Expense' && r.executed > 0)
+        .map(r => ({ name: r.level_3 || r.level_2, value: r.executed }))
 
       return NextResponse.json({
-        rows, kpis: { income, expense, balance: income - expense, month }, expensePie,
+        rows, kpis: { income, expense, balance: income - expense, month, currency: monthCurrency }, expensePie,
       })
     }
 

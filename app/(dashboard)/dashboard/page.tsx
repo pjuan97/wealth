@@ -8,6 +8,8 @@ import {
 } from 'recharts'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+type Currency = 'COP' | 'USD'
+
 interface MonthlySummary {
   month: string; label: string
   income: number; expense: number; balance: number; savingsRate: number
@@ -21,18 +23,18 @@ interface PlanVsExec {
   expensePlan: number; expenseExec: number
   incomeVariance: number | null; expenseVariance: number | null
 }
+// Expense-by-category breakdown — categories are this user's own Level 2
+// list (from Data Source), not a fixed English set.
 interface ExpenseByL2 {
-  month: string; label: string
-  life: number; health: number; travels: number; others: number
+  month: string; label: string; byLevel2: Record<string, number>
 }
 interface MonthlyRow {
-  event_type: string; level_2: string; level_3: string | null
+  event_type: string; level_2: string; level_3: string | null; currency: Currency
   plan: number; executed: number; diff: number
   variance: number | null; achievement: number | null
 }
 interface ExpenseByCat {
-  month: string; label: string
-  life: number; health: number; travels: number; others: number
+  month: string; label: string; byLevel2: Record<string, number>
 }
 interface EquityMonthData {
   month: string; label: string
@@ -75,6 +77,31 @@ function fM(n: number): string {
   return fCOP(n)
 }
 
+function fUSD(n: number): string {
+  if (n === 0) return '$0'
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency', currency: 'USD',
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  }).format(n)
+}
+
+function fMoney(n: number, currency: Currency): string {
+  return currency === 'USD' ? fUSD(n) : fCOP(n)
+}
+
+// Compact K/M form, currency-aware — same abbreviation thresholds `fM` uses
+// for COP, but USD never needs the M suffix at realistic personal-finance scale.
+function fMc(n: number, currency: Currency): string {
+  if (n === 0) return '—'
+  const abs = Math.abs(n)
+  const sign = n < 0 ? '-' : ''
+  if (currency === 'USD') {
+    if (abs >= 1000) return `${sign}$${(abs/1000).toFixed(1)}K`
+    return `${sign}$${abs.toFixed(0)}`
+  }
+  return fM(n)
+}
+
 function fPct(n: number | null): string {
   if (n === null) return '—'
   return `${(n * 100).toFixed(1)}%`
@@ -88,8 +115,9 @@ function varianceColor(v: number | null, type: 'income' | 'expense'): string {
 }
 
 // ─── Chart Tooltip ────────────────────────────────────────────────────────────
-function ChartTooltip({ active, payload, label }: {
+function ChartTooltip({ active, payload, label, currency = 'COP' }: {
   active?: boolean; payload?: Array<{name: string; value: number; color: string}>; label?: string
+  currency?: Currency
 }) {
   if (!active || !payload?.length) return null
   return (
@@ -101,7 +129,7 @@ function ChartTooltip({ active, payload, label }: {
       {payload.map((p, i) => (
         <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', marginBottom: '2px' }}>
           <span style={{ color: p.color }}>{p.name}</span>
-          <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{fM(p.value)}</span>
+          <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{fMc(p.value, currency)}</span>
         </div>
       ))}
     </div>
@@ -204,11 +232,15 @@ function MiniTable({ headers, rows }: {
 }
 
 // ─── OVERVIEW TAB ─────────────────────────────────────────────────────────────
+const CATEGORY_LINE_COLORS = ['#f97316', '#38bdf8', '#a78bfa', '#34d399', '#facc15', '#fb7185']
+
 function OverviewTab() {
   const [data, setData] = useState<{
+    currency: Currency
     monthlySummary: MonthlySummary[]
     incomeBySource: IncomeSource[]
     expenseByCategory: ExpenseByCat[]
+    expenseCategories: string[]
     ytd: { income: number; expense: number; balance: number; savingsRate: number; months: number }
     netWorth: number; cashBalance: number; totalEquity: number
   } | null>(null)
@@ -219,17 +251,20 @@ function OverviewTab() {
 
   if (!data) return <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading…</div>
 
+  const { currency } = data
+  const money = (n: number) => fMc(n, currency)
   const withData = data.monthlySummary.filter(m => m.income > 0 || m.expense > 0)
+  const cats = data.expenseCategories
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
       {/* KPI row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px' }}>
-        <KpiCard label="Net Worth" value={fM(data.netWorth)} accent />
-        <KpiCard label="YTD Income" value={fM(data.ytd.income)} sub={`${data.ytd.months} months`} />
-        <KpiCard label="YTD Expense" value={fM(data.ytd.expense)} />
-        <KpiCard label="YTD Balance" value={fM(data.ytd.balance)} />
+        <KpiCard label="Net Worth" value={money(data.netWorth)} accent />
+        <KpiCard label="YTD Income" value={money(data.ytd.income)} sub={`${data.ytd.months} months`} />
+        <KpiCard label="YTD Expense" value={money(data.ytd.expense)} />
+        <KpiCard label="YTD Balance" value={money(data.ytd.balance)} />
         <KpiCard label="Savings Rate" value={fPct(data.ytd.savingsRate)} />
       </div>
 
@@ -240,8 +275,8 @@ function OverviewTab() {
             <BarChart data={withData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.1)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={fM} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
-              <Tooltip content={<ChartTooltip />} />
+              <YAxis tickFormatter={money} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
+              <Tooltip content={<ChartTooltip currency={currency} />} />
               <Legend wrapperStyle={{ fontSize: '11px', color: 'var(--text-secondary)' }} />
               <Bar dataKey="income" name="Income" fill={CHART_COLORS[0]} radius={[3,3,0,0]} />
               <Bar dataKey="expense" name="Expense" fill={CHART_COLORS[1]} radius={[3,3,0,0]} />
@@ -254,9 +289,9 @@ function OverviewTab() {
             headers={['Month', 'Income', 'Expense', 'Balance', 'Savings']}
             rows={withData.map(m => [
               { value: m.label },
-              { value: fM(m.income) },
-              { value: fM(m.expense), color: 'var(--text-secondary)' },
-              { value: fM(m.balance), color: m.balance >= 0 ? 'var(--accent)' : 'var(--text-secondary)', bold: true },
+              { value: money(m.income) },
+              { value: money(m.expense), color: 'var(--text-secondary)' },
+              { value: money(m.balance), color: m.balance >= 0 ? 'var(--accent)' : 'var(--text-secondary)', bold: true },
               { value: fPct(m.savingsRate), color: m.savingsRate >= 0.2 ? 'var(--accent)' : 'var(--text-secondary)' },
             ])}
           />
@@ -283,8 +318,8 @@ function OverviewTab() {
               </defs>
               <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.1)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={fM} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
-              <Tooltip content={<ChartTooltip />} />
+              <YAxis tickFormatter={money} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
+              <Tooltip content={<ChartTooltip currency={currency} />} />
               <Legend wrapperStyle={{ fontSize: '11px' }} />
               <Area type="monotone" dataKey="salary" name="Salary" stroke="#f97316" fill="url(#salaryGrad)" strokeWidth={2} />
               <Area type="monotone" dataKey="other" name="Other Incomes" stroke="#94a3b8" fill="url(#otherGrad)" strokeWidth={2} />
@@ -298,55 +333,54 @@ function OverviewTab() {
               const src = data.incomeBySource.find(s => s.month === m.month)
               return [
                 { value: m.label },
-                { value: fM(src?.salary || 0) },
-                { value: fM(src?.other || 0), color: 'var(--text-secondary)' },
+                { value: money(src?.salary || 0) },
+                { value: money(src?.other || 0), color: 'var(--text-secondary)' },
               ]
             })}
           />
         </Card>
       </div>
 
-      {/* Expense by Category — line chart + table */}
+      {/* Expense by Category — line chart + table (categories are this user's own) */}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
-        <Card title="Expense by Category" subtitle="Life / Health / Travels / Others — monthly trend">
+        <Card title="Expense by Category" subtitle={`${cats.join(' / ')} — monthly trend`}>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart
               data={withData.map(m => {
                 const exp = data.expenseByCategory?.find((e: ExpenseByCat) => e.month === m.month)
-                return {
-                  label: m.label,
-                  Life: exp?.life || 0,
-                  Health: exp?.health || 0,
-                  Travels: exp?.travels || 0,
-                  Others: exp?.others || 0,
-                }
+                const row: Record<string, string | number> = { label: m.label }
+                for (const cat of cats) row[cat] = exp?.byLevel2[cat] || 0
+                return row
               })}
               margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
             >
               <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.1)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={fM} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
-              <Tooltip content={<ChartTooltip />} />
+              <YAxis tickFormatter={money} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
+              <Tooltip content={<ChartTooltip currency={currency} />} />
               <Legend wrapperStyle={{ fontSize: '11px' }} />
-              <Line type="monotone" dataKey="Life" stroke="#f97316" strokeWidth={2} dot={{ r: 3, fill: '#f97316' }} />
-              <Line type="monotone" dataKey="Health" stroke="#38bdf8" strokeWidth={2} dot={{ r: 3, fill: '#38bdf8' }} />
-              <Line type="monotone" dataKey="Travels" stroke="#a78bfa" strokeWidth={2} dot={{ r: 3, fill: '#a78bfa' }} />
-              <Line type="monotone" dataKey="Others" stroke="#34d399" strokeWidth={2} dot={{ r: 3, fill: '#34d399' }} />
+              {cats.map((cat, i) => (
+                <Line
+                  key={cat} type="monotone" dataKey={cat}
+                  stroke={CATEGORY_LINE_COLORS[i % CATEGORY_LINE_COLORS.length]} strokeWidth={2}
+                  dot={{ r: 3, fill: CATEGORY_LINE_COLORS[i % CATEGORY_LINE_COLORS.length] }}
+                />
+              ))}
             </LineChart>
           </ResponsiveContainer>
         </Card>
 
         <Card title="Expense by Category YTD">
           <MiniTable
-            headers={['Month', 'Life', 'Health', 'Travels', 'Others']}
+            headers={['Month', ...cats]}
             rows={withData.map(m => {
               const exp = data.expenseByCategory?.find((e: ExpenseByCat) => e.month === m.month)
               return [
                 { value: m.label },
-                { value: fM(exp?.life || 0), color: '#f97316' },
-                { value: fM(exp?.health || 0), color: '#38bdf8' },
-                { value: fM(exp?.travels || 0), color: '#a78bfa' },
-                { value: fM(exp?.others || 0), color: '#34d399' },
+                ...cats.map((cat, i) => ({
+                  value: money(exp?.byLevel2[cat] || 0),
+                  color: CATEGORY_LINE_COLORS[i % CATEGORY_LINE_COLORS.length],
+                })),
               ]
             })}
           />
@@ -359,8 +393,10 @@ function OverviewTab() {
 // ─── PLAN TAB ─────────────────────────────────────────────────────────────────
 function PlanTab() {
   const [data, setData] = useState<{
+    currency: Currency
     planVsExec: PlanVsExec[]
     expenseByL2: ExpenseByL2[]
+    expenseCategories: string[]
   } | null>(null)
 
   useEffect(() => {
@@ -369,16 +405,15 @@ function PlanTab() {
 
   if (!data) return <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading…</div>
 
+  const { currency, expenseCategories: cats } = data
+  const money = (n: number) => fMc(n, currency)
   const withData = data.planVsExec.filter(m => m.incomePlan > 0 || m.incomeExec > 0)
-  const expWithData = data.expenseByL2.filter(m => m.life + m.health + m.travels + m.others > 0)
+  const expWithData = data.expenseByL2.filter(m => Object.values(m.byLevel2).reduce((s, v) => s + v, 0) > 0)
 
-  // Expense pie YTD
-  const expensePieYTD = [
-    { name: 'Life', value: expWithData.reduce((s, m) => s + m.life, 0) },
-    { name: 'Health', value: expWithData.reduce((s, m) => s + m.health, 0) },
-    { name: 'Travels', value: expWithData.reduce((s, m) => s + m.travels, 0) },
-    { name: 'Others', value: expWithData.reduce((s, m) => s + m.others, 0) },
-  ].filter(e => e.value > 0)
+  // Expense pie YTD — one slice per category this user actually has
+  const expensePieYTD = cats
+    .map(cat => ({ name: cat, value: expWithData.reduce((s, m) => s + (m.byLevel2[cat] || 0), 0) }))
+    .filter(e => e.value > 0)
 
   const totalExpenseYTD = expensePieYTD.reduce((s, e) => s + e.value, 0)
 
@@ -402,8 +437,8 @@ function PlanTab() {
               </defs>
               <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.1)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={fM} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
-              <Tooltip content={<ChartTooltip />} />
+              <YAxis tickFormatter={money} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
+              <Tooltip content={<ChartTooltip currency={currency} />} />
               <Legend wrapperStyle={{ fontSize: '11px' }} />
               <Area type="monotone" dataKey="incomePlan" name="Plan" stroke="#94a3b8" fill="url(#incPlanGrad)" strokeWidth={2} strokeDasharray="5 3" />
               <Area type="monotone" dataKey="incomeExec" name="Executed" stroke="#f97316" fill="url(#incExecGrad)" strokeWidth={2} />
@@ -415,8 +450,8 @@ function PlanTab() {
             headers={['Month', 'Plan', 'Exec', 'Var%']}
             rows={withData.map(m => [
               { value: m.label },
-              { value: fM(m.incomePlan), color: 'var(--text-secondary)' },
-              { value: fM(m.incomeExec) },
+              { value: money(m.incomePlan), color: 'var(--text-secondary)' },
+              { value: money(m.incomeExec) },
               { value: fPct(m.incomeVariance), color: varianceColor(m.incomeVariance, 'income') },
             ])}
           />
@@ -440,8 +475,8 @@ function PlanTab() {
               </defs>
               <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.1)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={fM} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
-              <Tooltip content={<ChartTooltip />} />
+              <YAxis tickFormatter={money} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
+              <Tooltip content={<ChartTooltip currency={currency} />} />
               <Legend wrapperStyle={{ fontSize: '11px' }} />
               <Area type="monotone" dataKey="expensePlan" name="Plan" stroke="#94a3b8" fill="url(#expPlanGrad)" strokeWidth={2} strokeDasharray="5 3" />
               <Area type="monotone" dataKey="expenseExec" name="Executed" stroke="#f97316" fill="url(#expExecGrad)" strokeWidth={2} />
@@ -453,28 +488,30 @@ function PlanTab() {
             headers={['Month', 'Plan', 'Exec', 'Var%']}
             rows={withData.map(m => [
               { value: m.label },
-              { value: fM(m.expensePlan), color: 'var(--text-secondary)' },
-              { value: fM(m.expenseExec) },
+              { value: money(m.expensePlan), color: 'var(--text-secondary)' },
+              { value: money(m.expenseExec) },
               { value: fPct(m.expenseVariance), color: varianceColor(m.expenseVariance, 'expense') },
             ])}
           />
         </Card>
       </div>
 
-      {/* Expense breakdown by category */}
+      {/* Expense breakdown by category — categories are this user's own */}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
-        <Card title="Expense by Category" subtitle="Life / Health / Travels / Others">
+        <Card title="Expense by Category" subtitle={cats.join(' / ')}>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={expWithData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+            <BarChart
+              data={expWithData.map(m => ({ label: m.label, ...m.byLevel2 }))}
+              margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
+            >
               <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.1)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={fM} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
-              <Tooltip content={<ChartTooltip />} />
+              <YAxis tickFormatter={money} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
+              <Tooltip content={<ChartTooltip currency={currency} />} />
               <Legend wrapperStyle={{ fontSize: '11px' }} />
-              <Bar dataKey="life" name="Life" fill={CHART_COLORS[0]} radius={[2,2,0,0]} stackId="a" />
-              <Bar dataKey="health" name="Health" fill={CHART_COLORS[1]} radius={[0,0,0,0]} stackId="a" />
-              <Bar dataKey="travels" name="Travels" fill={CHART_COLORS[2]} stackId="a" />
-              <Bar dataKey="others" name="Others" fill={CHART_COLORS[3]} radius={[2,2,0,0]} stackId="a" />
+              {cats.map((cat, i) => (
+                <Bar key={cat} dataKey={cat} name={cat} fill={CATEGORY_LINE_COLORS[i % CATEGORY_LINE_COLORS.length]} stackId="a" />
+              ))}
             </BarChart>
           </ResponsiveContainer>
         </Card>
@@ -494,15 +531,15 @@ function PlanTab() {
                   <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip formatter={(v) => fM(Number(v))} />
+              <Tooltip formatter={(v) => money(Number(v))} />
             </PieChart>
           </ResponsiveContainer>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '8px' }}>
             {expensePieYTD.map((e, i) => (
               <div key={e.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
-                <span style={{ color: PIE_COLORS[i], fontWeight: 600 }}>● {e.name}</span>
+                <span style={{ color: PIE_COLORS[i % PIE_COLORS.length], fontWeight: 600 }}>● {e.name}</span>
                 <span style={{ color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                  {fM(e.value)} ({totalExpenseYTD > 0 ? ((e.value / totalExpenseYTD) * 100).toFixed(0) : 0}%)
+                  {money(e.value)} ({totalExpenseYTD > 0 ? ((e.value / totalExpenseYTD) * 100).toFixed(0) : 0}%)
                 </span>
               </div>
             ))}
@@ -518,7 +555,7 @@ function MonthlyDetailTab() {
   const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH)
   const [data, setData] = useState<{
     rows: MonthlyRow[]
-    kpis: { income: number; expense: number; balance: number; month: string }
+    kpis: { income: number; expense: number; balance: number; month: string; currency: Currency }
     expensePie: Array<{ name: string; value: number }>
   } | null>(null)
 
@@ -561,9 +598,9 @@ function MonthlyDetailTab() {
         <>
           {/* KPIs */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-            <KpiCard label="Income" value={fCOP(data.kpis.income)} />
-            <KpiCard label="Expense" value={fCOP(data.kpis.expense)} />
-            <KpiCard label="Balance" value={fCOP(data.kpis.balance)} accent={data.kpis.balance >= 0} />
+            <KpiCard label="Income" value={fMoney(data.kpis.income, data.kpis.currency)} />
+            <KpiCard label="Expense" value={fMoney(data.kpis.expense, data.kpis.currency)} />
+            <KpiCard label="Balance" value={fMoney(data.kpis.balance, data.kpis.currency)} accent={data.kpis.balance >= 0} />
           </div>
 
           {/* Expense drilldown — full width layout */}
@@ -575,10 +612,10 @@ function MonthlyDetailTab() {
                 headers={['Category', 'Plan', 'Executed', 'Diff', 'Var%']}
                 rows={expenseRows.map(r => [
                   { value: r.level_3 || r.level_2 },
-                  { value: fM(r.plan), color: 'var(--text-secondary)' },
-                  { value: fM(r.executed), bold: r.executed > 0 },
+                  { value: fMc(r.plan, r.currency), color: 'var(--text-secondary)' },
+                  { value: fMc(r.executed, r.currency), bold: r.executed > 0 },
                   {
-                    value: r.diff !== 0 ? `${r.diff >= 0 ? '+' : ''}${fM(r.diff)}` : '—',
+                    value: r.diff !== 0 ? `${r.diff >= 0 ? '+' : ''}${fMc(r.diff, r.currency)}` : '—',
                     color: r.diff <= 0 ? 'var(--accent)' : 'var(--text-secondary)',
                   },
                   { value: fPct(r.variance), color: varianceColor(r.variance, 'expense') },
@@ -601,7 +638,7 @@ function MonthlyDetailTab() {
                   <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.1)" horizontal={false} />
                   <XAxis
                     type="number"
-                    tickFormatter={fM}
+                    tickFormatter={(n: number) => fMc(n, data.kpis.currency)}
                     tick={{ fill: 'var(--text-muted)', fontSize: 10 }}
                     axisLine={false}
                     tickLine={false}
@@ -614,7 +651,7 @@ function MonthlyDetailTab() {
                     tickLine={false}
                     width={116}
                   />
-                  <Tooltip content={<ChartTooltip />} />
+                  <Tooltip content={<ChartTooltip currency={data.kpis.currency} />} />
                   <Legend wrapperStyle={{ fontSize: '11px' }} />
                   <Bar dataKey="plan" name="Plan" fill="#94a3b8" radius={[0,3,3,0]} barSize={8} />
                   <Bar dataKey="executed" name="Executed" fill="#f97316" radius={[0,3,3,0]} barSize={8} />

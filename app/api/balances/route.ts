@@ -33,19 +33,23 @@ export async function GET(request: NextRequest) {
       const [inflow, outflow] = await Promise.all([
         prisma.transaction.aggregate({
           where: { user_id: userId, to_account: account },
-          _sum: { amount: true },
+          _sum: { amount: true, usd_amount: true },
         }),
         prisma.transaction.aggregate({
           where: { user_id: userId, from_account: account },
-          _sum: { amount: true },
+          _sum: { amount: true, usd_amount: true },
         }),
       ])
       const balance = Number(inflow._sum.amount || 0) - Number(outflow._sum.amount || 0)
+      // A USD-native account (its transactions carry real usd_amount, like Dani's)
+      // gets its real dollar balance; an FX-derived estimate is only a fallback
+      // for accounts that never record usd_amount at all.
+      const balanceUsdNative = Number(inflow._sum.usd_amount || 0) - Number(outflow._sum.usd_amount || 0)
       cashBalances.push({
         name: account,
         type: 'cash',
         balance,
-        balanceUsd: balance / currentFX,
+        balanceUsd: balanceUsdNative !== 0 ? balanceUsdNative : balance / currentFX,
       })
     }
 
@@ -124,20 +128,21 @@ export async function GET(request: NextRequest) {
       const [charged, paid] = await Promise.all([
         prisma.transaction.aggregate({
           where: { user_id: userId, from_account: account },
-          _sum: { amount: true },
+          _sum: { amount: true, usd_amount: true },
         }),
         prisma.transaction.aggregate({
           where: { user_id: userId, to_account: account },
-          _sum: { amount: true },
+          _sum: { amount: true, usd_amount: true },
         }),
       ])
       // Outstanding debt = what was charged - what was paid
       const debt = Number(charged._sum.amount || 0) - Number(paid._sum.amount || 0)
+      const debtUsdNative = Number(charged._sum.usd_amount || 0) - Number(paid._sum.usd_amount || 0)
       debtBalances.push({
         name: account,
         type: 'debt',
         balance: debt > 0 ? -debt : 0, // negative = liability
-        balanceUsd: debt > 0 ? -(debt / currentFX) : 0,
+        balanceUsd: debtUsdNative > 0 ? -debtUsdNative : (debt > 0 ? -(debt / currentFX) : 0),
       })
     }
 
@@ -149,9 +154,13 @@ export async function GET(request: NextRequest) {
     const totalLiabilities = debtBalances.reduce((s, a) => s + Math.abs(a.balance), 0)
     const netWorth = totalAssets - totalLiabilities
 
-    const totalAssetsUsd = totalAssets / currentFX
-    const totalLiabilitiesUsd = totalLiabilities / currentFX
-    const netWorthUsd = netWorth / currentFX
+    // Sum each account's own (real, when native) USD balance instead of
+    // dividing the COP total by today's rate — matches per-account balanceUsd.
+    const totalAssetsUsd =
+      cashBalances.reduce((s, a) => s + Math.max(0, a.balanceUsd), 0) +
+      investmentBalances.reduce((s, a) => s + Math.max(0, a.balanceUsd), 0)
+    const totalLiabilitiesUsd = debtBalances.reduce((s, a) => s + Math.abs(a.balanceUsd), 0)
+    const netWorthUsd = totalAssetsUsd - totalLiabilitiesUsd
 
     // ── 7. Net Worth Evolution (2026 only) ───────────────────────────────────
     const MONTHS_2026 = [

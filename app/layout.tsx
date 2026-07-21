@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { initializeServer } from './startup'
 import { ThemeProvider } from './components/ThemeProvider'
+import { CurrencyPreferenceProvider } from './components/CurrencyPreferenceProvider'
 
 initializeServer()
 
@@ -32,7 +33,9 @@ export default function RootLayout({
       </head>
       <body className={inter.className}>
         <ThemeProvider>
-          {children}
+          <CurrencyPreferenceProvider>
+            {children}
+          </CurrencyPreferenceProvider>
         </ThemeProvider>
       </body>
     </html>

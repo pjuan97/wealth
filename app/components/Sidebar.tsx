@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import ThemeToggle from './ThemeToggle'
+import { useCurrencyPreference } from './CurrencyPreferenceProvider'
 
 const NAV_ITEMS = [
   {
@@ -100,6 +101,7 @@ export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const [userName, setUserName] = useState<string>('')
+  const { displayCurrency, setDisplayCurrency } = useCurrencyPreference()
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -185,6 +187,30 @@ export default function Sidebar() {
           )
         })}
       </nav>
+
+      {/* Display currency toggle — applies across the whole app */}
+      <div style={{ padding: '10px 16px 0', flexShrink: 0 }}>
+        <div style={{
+          display: 'flex', borderRadius: '8px', overflow: 'hidden',
+          border: '1px solid var(--border-strong)', width: '100%',
+        }}>
+          {(['COP', 'USD'] as const).map(c => (
+            <button
+              key={c}
+              onClick={() => setDisplayCurrency(c)}
+              title={`Show all amounts in ${c}`}
+              style={{
+                flex: 1, padding: '6px 0', fontSize: '11px', fontWeight: 700,
+                background: displayCurrency === c ? 'var(--accent)' : 'transparent',
+                color: displayCurrency === c ? '#ffffff' : 'var(--text-secondary)',
+                border: 'none', cursor: 'pointer',
+              }}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Footer */}
       <div

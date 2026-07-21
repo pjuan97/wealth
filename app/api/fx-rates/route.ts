@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { fetchAndStoreTodayRate, getRecentRates } from '@/lib/fxService'
+import { fetchAndStoreTodayRate, getRecentRates, getMonthlyFxMap } from '@/lib/fxService'
 
 // GET /api/fx-rates — returns recent daily rates + monthly rates
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
-  const type = searchParams.get('type') // 'daily' | 'monthly' | 'today'
+  const type = searchParams.get('type') // 'daily' | 'monthly' | 'monthly-map' | 'today'
 
   try {
     if (type === 'today') {
@@ -18,6 +18,13 @@ export async function GET(request: NextRequest) {
         orderBy: { month_label: 'asc' },
       })
       return NextResponse.json(rates)
+    }
+
+    // Averaged daily TRM per month (2026-01..12), for converting an amount from
+    // its native currency into the display currency the user has chosen.
+    if (type === 'monthly-map') {
+      const map = await getMonthlyFxMap()
+      return NextResponse.json(map)
     }
 
     // Default: daily rates (last 90 days) + today's rate

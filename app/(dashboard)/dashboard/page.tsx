@@ -6,6 +6,7 @@ import {
   PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
+import { useCurrencyPreference } from '@/app/components/CurrencyPreferenceProvider'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Currency = 'COP' | 'USD'
@@ -16,6 +17,13 @@ interface MonthlySummary {
 }
 interface IncomeSource {
   month: string; label: string; salary: number; other: number
+}
+interface PlanVsExecRaw {
+  month: string; label: string
+  incomePlanCOP: number; incomePlanUSD: number
+  expensePlanCOP: number; expensePlanUSD: number
+  incomeExecCOP: number; incomeExecUSD: number
+  expenseExecCOP: number; expenseExecUSD: number
 }
 interface PlanVsExec {
   month: string; label: string
@@ -235,8 +243,8 @@ function MiniTable({ headers, rows }: {
 const CATEGORY_LINE_COLORS = ['#f97316', '#38bdf8', '#a78bfa', '#34d399', '#facc15', '#fb7185']
 
 function OverviewTab() {
+  const { displayCurrency, convert } = useCurrencyPreference()
   const [data, setData] = useState<{
-    currency: Currency
     monthlySummary: MonthlySummary[]
     incomeBySource: IncomeSource[]
     expenseByCategory: ExpenseByCat[]
@@ -251,21 +259,51 @@ function OverviewTab() {
 
   if (!data) return <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading…</div>
 
-  const { currency } = data
-  const money = (n: number) => fMc(n, currency)
-  const withData = data.monthlySummary.filter(m => m.income > 0 || m.expense > 0)
+  const money = (n: number) => fMc(n, displayCurrency)
   const cats = data.expenseCategories
+
+  // Every figure here is a real COP amount (transactions always carry a valid
+  // COP-equivalent) — convert per row using that row's own month's TRM.
+  const withData = data.monthlySummary
+    .filter(m => m.income > 0 || m.expense > 0)
+    .map(m => ({
+      ...m,
+      income: convert(m.income, 'COP', m.month),
+      expense: convert(m.expense, 'COP', m.month),
+      balance: convert(m.balance, 'COP', m.month),
+    }))
+  const incomeBySourceConverted = data.incomeBySource.map(s => ({
+    ...s,
+    salary: convert(s.salary, 'COP', s.month),
+    other: convert(s.other, 'COP', s.month),
+  }))
+  const expenseByCategoryConverted = data.expenseByCategory.map(row => ({
+    ...row,
+    byLevel2: Object.fromEntries(cats.map(cat => [cat, convert(row.byLevel2[cat] || 0, 'COP', row.month)])),
+  }))
+  // Point-in-time / multi-month aggregates have no single owning month —
+  // fall back to the overall average TRM.
+  const netWorth = convert(data.netWorth, 'COP')
+  const cashBalance = convert(data.cashBalance, 'COP')
+  const totalEquity = convert(data.totalEquity, 'COP')
+  const ytd = {
+    income: convert(data.ytd.income, 'COP'),
+    expense: convert(data.ytd.expense, 'COP'),
+    balance: convert(data.ytd.balance, 'COP'),
+    savingsRate: data.ytd.savingsRate,
+    months: data.ytd.months,
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
       {/* KPI row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px' }}>
-        <KpiCard label="Net Worth" value={money(data.netWorth)} accent />
-        <KpiCard label="YTD Income" value={money(data.ytd.income)} sub={`${data.ytd.months} months`} />
-        <KpiCard label="YTD Expense" value={money(data.ytd.expense)} />
-        <KpiCard label="YTD Balance" value={money(data.ytd.balance)} />
-        <KpiCard label="Savings Rate" value={fPct(data.ytd.savingsRate)} />
+        <KpiCard label="Net Worth" value={money(netWorth)} accent />
+        <KpiCard label="YTD Income" value={money(ytd.income)} sub={`${ytd.months} months`} />
+        <KpiCard label="YTD Expense" value={money(ytd.expense)} />
+        <KpiCard label="YTD Balance" value={money(ytd.balance)} />
+        <KpiCard label="Savings Rate" value={fPct(ytd.savingsRate)} />
       </div>
 
       {/* Income vs Expense chart + table */}
@@ -276,7 +314,7 @@ function OverviewTab() {
               <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.1)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis tickFormatter={money} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
-              <Tooltip content={<ChartTooltip currency={currency} />} />
+              <Tooltip content={<ChartTooltip currency={displayCurrency} />} />
               <Legend wrapperStyle={{ fontSize: '11px', color: 'var(--text-secondary)' }} />
               <Bar dataKey="income" name="Income" fill={CHART_COLORS[0]} radius={[3,3,0,0]} />
               <Bar dataKey="expense" name="Expense" fill={CHART_COLORS[1]} radius={[3,3,0,0]} />
@@ -303,7 +341,7 @@ function OverviewTab() {
         <Card title="Income by Source" subtitle="Salary vs Other Incomes">
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={withData.map(m => {
-              const src = data.incomeBySource.find(s => s.month === m.month)
+              const src = incomeBySourceConverted.find(s => s.month === m.month)
               return { ...m, salary: src?.salary || 0, other: src?.other || 0 }
             })} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               <defs>
@@ -319,7 +357,7 @@ function OverviewTab() {
               <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.1)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis tickFormatter={money} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
-              <Tooltip content={<ChartTooltip currency={currency} />} />
+              <Tooltip content={<ChartTooltip currency={displayCurrency} />} />
               <Legend wrapperStyle={{ fontSize: '11px' }} />
               <Area type="monotone" dataKey="salary" name="Salary" stroke="#f97316" fill="url(#salaryGrad)" strokeWidth={2} />
               <Area type="monotone" dataKey="other" name="Other Incomes" stroke="#94a3b8" fill="url(#otherGrad)" strokeWidth={2} />
@@ -330,7 +368,7 @@ function OverviewTab() {
           <MiniTable
             headers={['Month', 'Salary', 'Other']}
             rows={withData.map(m => {
-              const src = data.incomeBySource.find(s => s.month === m.month)
+              const src = incomeBySourceConverted.find(s => s.month === m.month)
               return [
                 { value: m.label },
                 { value: money(src?.salary || 0) },
@@ -347,7 +385,7 @@ function OverviewTab() {
           <ResponsiveContainer width="100%" height={220}>
             <LineChart
               data={withData.map(m => {
-                const exp = data.expenseByCategory?.find((e: ExpenseByCat) => e.month === m.month)
+                const exp = expenseByCategoryConverted.find(e => e.month === m.month)
                 const row: Record<string, string | number> = { label: m.label }
                 for (const cat of cats) row[cat] = exp?.byLevel2[cat] || 0
                 return row
@@ -357,7 +395,7 @@ function OverviewTab() {
               <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.1)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis tickFormatter={money} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
-              <Tooltip content={<ChartTooltip currency={currency} />} />
+              <Tooltip content={<ChartTooltip currency={displayCurrency} />} />
               <Legend wrapperStyle={{ fontSize: '11px' }} />
               {cats.map((cat, i) => (
                 <Line
@@ -374,7 +412,7 @@ function OverviewTab() {
           <MiniTable
             headers={['Month', ...cats]}
             rows={withData.map(m => {
-              const exp = data.expenseByCategory?.find((e: ExpenseByCat) => e.month === m.month)
+              const exp = expenseByCategoryConverted.find(e => e.month === m.month)
               return [
                 { value: m.label },
                 ...cats.map((cat, i) => ({
@@ -392,11 +430,12 @@ function OverviewTab() {
 
 // ─── PLAN TAB ─────────────────────────────────────────────────────────────────
 function PlanTab() {
+  const { displayCurrency, convert } = useCurrencyPreference()
   const [data, setData] = useState<{
-    currency: Currency
-    planVsExec: PlanVsExec[]
+    planVsExec: PlanVsExecRaw[]
     expenseByL2: ExpenseByL2[]
     expenseCategories: string[]
+    categoryCurrency: Record<string, Currency>
   } | null>(null)
 
   useEffect(() => {
@@ -405,10 +444,31 @@ function PlanTab() {
 
   if (!data) return <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading…</div>
 
-  const { currency, expenseCategories: cats } = data
-  const money = (n: number) => fMc(n, currency)
-  const withData = data.planVsExec.filter(m => m.incomePlan > 0 || m.incomeExec > 0)
-  const expWithData = data.expenseByL2.filter(m => Object.values(m.byLevel2).reduce((s, v) => s + v, 0) > 0)
+  const { expenseCategories: cats, categoryCurrency } = data
+  const money = (n: number) => fMc(n, displayCurrency)
+
+  // Merge each month's COP/USD pools into the chosen display currency using
+  // that month's own TRM — no single "dominant" currency for the whole user.
+  const planVsExec: PlanVsExec[] = data.planVsExec.map(m => {
+    const incomePlan = convert(m.incomePlanCOP, 'COP', m.month) + convert(m.incomePlanUSD, 'USD', m.month)
+    const incomeExec = convert(m.incomeExecCOP, 'COP', m.month) + convert(m.incomeExecUSD, 'USD', m.month)
+    const expensePlan = convert(m.expensePlanCOP, 'COP', m.month) + convert(m.expensePlanUSD, 'USD', m.month)
+    const expenseExec = convert(m.expenseExecCOP, 'COP', m.month) + convert(m.expenseExecUSD, 'USD', m.month)
+    return {
+      month: m.month, label: m.label, incomePlan, incomeExec, expensePlan, expenseExec,
+      incomeVariance: incomePlan > 0 ? (incomeExec - incomePlan) / incomePlan : null,
+      expenseVariance: expensePlan > 0 ? (expenseExec - expensePlan) / expensePlan : null,
+    }
+  })
+  const withData = planVsExec.filter(m => m.incomePlan > 0 || m.incomeExec > 0)
+
+  // Each category's raw byLevel2 value is in that category's own native
+  // currency — convert per row using its own month before charting/summing.
+  const expenseByL2: ExpenseByL2[] = data.expenseByL2.map(row => ({
+    month: row.month, label: row.label,
+    byLevel2: Object.fromEntries(cats.map(cat => [cat, convert(row.byLevel2[cat] || 0, categoryCurrency[cat] || 'COP', row.month)])),
+  }))
+  const expWithData = expenseByL2.filter(m => Object.values(m.byLevel2).reduce((s, v) => s + v, 0) > 0)
 
   // Expense pie YTD — one slice per category this user actually has
   const expensePieYTD = cats
@@ -438,7 +498,7 @@ function PlanTab() {
               <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.1)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis tickFormatter={money} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
-              <Tooltip content={<ChartTooltip currency={currency} />} />
+              <Tooltip content={<ChartTooltip currency={displayCurrency} />} />
               <Legend wrapperStyle={{ fontSize: '11px' }} />
               <Area type="monotone" dataKey="incomePlan" name="Plan" stroke="#94a3b8" fill="url(#incPlanGrad)" strokeWidth={2} strokeDasharray="5 3" />
               <Area type="monotone" dataKey="incomeExec" name="Executed" stroke="#f97316" fill="url(#incExecGrad)" strokeWidth={2} />
@@ -476,7 +536,7 @@ function PlanTab() {
               <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.1)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis tickFormatter={money} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
-              <Tooltip content={<ChartTooltip currency={currency} />} />
+              <Tooltip content={<ChartTooltip currency={displayCurrency} />} />
               <Legend wrapperStyle={{ fontSize: '11px' }} />
               <Area type="monotone" dataKey="expensePlan" name="Plan" stroke="#94a3b8" fill="url(#expPlanGrad)" strokeWidth={2} strokeDasharray="5 3" />
               <Area type="monotone" dataKey="expenseExec" name="Executed" stroke="#f97316" fill="url(#expExecGrad)" strokeWidth={2} />
@@ -507,7 +567,7 @@ function PlanTab() {
               <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.1)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis tickFormatter={money} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
-              <Tooltip content={<ChartTooltip currency={currency} />} />
+              <Tooltip content={<ChartTooltip currency={displayCurrency} />} />
               <Legend wrapperStyle={{ fontSize: '11px' }} />
               {cats.map((cat, i) => (
                 <Bar key={cat} dataKey={cat} name={cat} fill={CATEGORY_LINE_COLORS[i % CATEGORY_LINE_COLORS.length]} stackId="a" />
@@ -552,11 +612,11 @@ function PlanTab() {
 
 // ─── MONTHLY DETAIL TAB ──────────────────────────────────────────────────────
 function MonthlyDetailTab() {
+  const { displayCurrency, convert } = useCurrencyPreference()
   const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH)
   const [data, setData] = useState<{
     rows: MonthlyRow[]
-    kpis: { income: number; expense: number; balance: number; month: string; currency: Currency }
-    expensePie: Array<{ name: string; value: number }>
+    kpis: { incomeCOP: number; incomeUSD: number; expenseCOP: number; expenseUSD: number; month: string }
   } | null>(null)
 
   const loadMonth = useCallback(async (m: string) => {
@@ -567,8 +627,22 @@ function MonthlyDetailTab() {
 
   useEffect(() => { loadMonth(selectedMonth) }, [selectedMonth, loadMonth])
 
-  const expenseRows = data?.rows.filter(r => r.event_type === 'Expense') || []
-  const totalExpense = data?.expensePie.reduce((s, e) => s + e.value, 0) || 0
+  // Each row keeps its own native currency — convert into the display
+  // currency using this month's own TRM before charting/summing.
+  const rows = (data?.rows || []).map(r => ({
+    ...r,
+    plan: convert(r.plan, r.currency, selectedMonth),
+    executed: convert(r.executed, r.currency, selectedMonth),
+    diff: convert(r.diff, r.currency, selectedMonth),
+  }))
+  const expenseRows = rows.filter(r => r.event_type === 'Expense')
+  const expensePie = expenseRows.filter(r => r.executed > 0).map(r => ({ name: r.level_3 || r.level_2, value: r.executed }))
+  const totalExpense = expensePie.reduce((s, e) => s + e.value, 0)
+  const kpis = data ? (() => {
+    const income = convert(data.kpis.incomeCOP, 'COP', selectedMonth) + convert(data.kpis.incomeUSD, 'USD', selectedMonth)
+    const expense = convert(data.kpis.expenseCOP, 'COP', selectedMonth) + convert(data.kpis.expenseUSD, 'USD', selectedMonth)
+    return { income, expense, balance: income - expense }
+  })() : null
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -598,9 +672,9 @@ function MonthlyDetailTab() {
         <>
           {/* KPIs */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-            <KpiCard label="Income" value={fMoney(data.kpis.income, data.kpis.currency)} />
-            <KpiCard label="Expense" value={fMoney(data.kpis.expense, data.kpis.currency)} />
-            <KpiCard label="Balance" value={fMoney(data.kpis.balance, data.kpis.currency)} accent={data.kpis.balance >= 0} />
+            <KpiCard label="Income" value={fMoney(kpis!.income, displayCurrency)} />
+            <KpiCard label="Expense" value={fMoney(kpis!.expense, displayCurrency)} />
+            <KpiCard label="Balance" value={fMoney(kpis!.balance, displayCurrency)} accent={kpis!.balance >= 0} />
           </div>
 
           {/* Expense drilldown — full width layout */}
@@ -612,10 +686,10 @@ function MonthlyDetailTab() {
                 headers={['Category', 'Plan', 'Executed', 'Diff', 'Var%']}
                 rows={expenseRows.map(r => [
                   { value: r.level_3 || r.level_2 },
-                  { value: fMc(r.plan, r.currency), color: 'var(--text-secondary)' },
-                  { value: fMc(r.executed, r.currency), bold: r.executed > 0 },
+                  { value: fMc(r.plan, displayCurrency), color: 'var(--text-secondary)' },
+                  { value: fMc(r.executed, displayCurrency), bold: r.executed > 0 },
                   {
-                    value: r.diff !== 0 ? `${r.diff >= 0 ? '+' : ''}${fMc(r.diff, r.currency)}` : '—',
+                    value: r.diff !== 0 ? `${r.diff >= 0 ? '+' : ''}${fMc(r.diff, displayCurrency)}` : '—',
                     color: r.diff <= 0 ? 'var(--accent)' : 'var(--text-secondary)',
                   },
                   { value: fPct(r.variance), color: varianceColor(r.variance, 'expense') },
@@ -638,7 +712,7 @@ function MonthlyDetailTab() {
                   <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.1)" horizontal={false} />
                   <XAxis
                     type="number"
-                    tickFormatter={(n: number) => fMc(n, data.kpis.currency)}
+                    tickFormatter={(n: number) => fMc(n, displayCurrency)}
                     tick={{ fill: 'var(--text-muted)', fontSize: 10 }}
                     axisLine={false}
                     tickLine={false}
@@ -651,7 +725,7 @@ function MonthlyDetailTab() {
                     tickLine={false}
                     width={116}
                   />
-                  <Tooltip content={<ChartTooltip currency={data.kpis.currency} />} />
+                  <Tooltip content={<ChartTooltip currency={displayCurrency} />} />
                   <Legend wrapperStyle={{ fontSize: '11px' }} />
                   <Bar dataKey="plan" name="Plan" fill="#94a3b8" radius={[0,3,3,0]} barSize={8} />
                   <Bar dataKey="executed" name="Executed" fill="#f97316" radius={[0,3,3,0]} barSize={8} />
@@ -668,6 +742,7 @@ function MonthlyDetailTab() {
 
 // ─── EQUITY TAB ───────────────────────────────────────────────────────────────
 function EquityTab() {
+  const { displayCurrency, convert } = useCurrencyPreference()
   const [data, setData] = useState<{
     portfolioByMonth: Array<{ month: string; label: string; planned: number; executed: number | null }>
     byAccount: EquityAccount[]
@@ -685,9 +760,26 @@ function EquityTab() {
 
   if (!data) return <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading…</div>
 
-  const withData = data.portfolioByMonth.filter(m => m.planned > 0)
-  const totalLatest = data.distributionPie.reduce((s, e) => s + e.value, 0)
-  const selectedAccountData = data.byAccount.find(a => a.account === selectedAccount)
+  // Equity accounts are always COP-native (no per-row currency) — convert per
+  // month using that month's own TRM; point-in-time figures with no month
+  // attached fall back to the overall average TRM.
+  const money = (n: number) => fMc(n, displayCurrency)
+  const withData = data.portfolioByMonth
+    .filter(m => m.planned > 0)
+    .map(m => ({ ...m, planned: convert(m.planned, 'COP', m.month), executed: m.executed !== null ? convert(m.executed, 'COP', m.month) : null }))
+  const distributionPie = data.distributionPie.map(e => ({ ...e, value: convert(e.value, 'COP') }))
+  const totalLatest = distributionPie.reduce((s, e) => s + e.value, 0)
+  const byAccount = data.byAccount.map(a => ({
+    ...a,
+    monthData: a.monthData.map(m => ({
+      ...m,
+      planned: convert(m.planned, 'COP', m.month),
+      executed: m.executed !== null ? convert(m.executed, 'COP', m.month) : null,
+      marketPnL: m.marketPnL !== null ? convert(m.marketPnL, 'COP', m.month) : null,
+    })),
+    latestExecuted: a.latestExecuted !== null ? convert(a.latestExecuted, 'COP') : null,
+  }))
+  const selectedAccountData = byAccount.find(a => a.account === selectedAccount)
   const accountMonthData = selectedAccountData?.monthData.filter(m => m.planned > 0) || []
 
   return (
@@ -695,11 +787,11 @@ function EquityTab() {
 
       {/* Portfolio KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-        {data.byAccount.filter(a => a.latestExecuted !== null).map(a => (
+        {byAccount.filter(a => a.latestExecuted !== null).map(a => (
           <KpiCard
             key={a.account}
             label={a.account}
-            value={fM(a.latestExecuted!)}
+            value={money(a.latestExecuted!)}
             sub={a.equity_type}
             accent={a.account === selectedAccount}
           />
@@ -713,8 +805,8 @@ function EquityTab() {
             <LineChart data={withData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.1)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={fM} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={56} />
-              <Tooltip content={<ChartTooltip />} />
+              <YAxis tickFormatter={money} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={56} />
+              <Tooltip content={<ChartTooltip currency={displayCurrency} />} />
               <Legend wrapperStyle={{ fontSize: '11px' }} />
               <Line type="monotone" dataKey="planned" name="Planned" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 3" dot={false} />
               <Line type="monotone" dataKey="executed" name="Executed" stroke="#f97316" strokeWidth={2.5} dot={{ fill: '#f97316', r: 4 }} connectNulls={false} />
@@ -727,20 +819,20 @@ function EquityTab() {
               <ResponsiveContainer width="100%" height={160}>
                 <PieChart>
                   <Pie
-                    data={data.distributionPie}
+                    data={distributionPie}
                     cx="50%" cy="50%"
                     innerRadius={40} outerRadius={65}
                     dataKey="value"
                   >
-                    {data.distributionPie.map((_, i) => (
+                    {distributionPie.map((_, i) => (
                       <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(v) => fM(Number(v))} />
+                  <Tooltip formatter={(v) => money(Number(v))} />
                 </PieChart>
               </ResponsiveContainer>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '8px' }}>
-                {data.distributionPie.map((e, i) => (
+                {distributionPie.map((e, i) => (
                   <div key={e.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
                     <span style={{ color: CHART_COLORS[i] }}>● {e.name}</span>
                     <span style={{ color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
@@ -786,8 +878,8 @@ function EquityTab() {
             <BarChart data={accountMonthData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.1)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={fM} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
-              <Tooltip content={<ChartTooltip />} />
+              <YAxis tickFormatter={money} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
+              <Tooltip content={<ChartTooltip currency={displayCurrency} />} />
               <Legend wrapperStyle={{ fontSize: '11px' }} />
               <Bar dataKey="planned" name="Planned" fill="#94a3b8" radius={[3,3,0,0]} />
               <Bar dataKey="executed" name="Executed" fill="#f97316" radius={[3,3,0,0]} />
@@ -800,10 +892,10 @@ function EquityTab() {
               headers={['Month', 'Planned', 'Executed', 'Market P&L']}
               rows={accountMonthData.map(m => [
                 { value: m.label },
-                { value: fM(m.planned), color: 'var(--text-secondary)' },
-                { value: m.executed !== null ? fM(m.executed) : '—', bold: m.executed !== null },
+                { value: money(m.planned), color: 'var(--text-secondary)' },
+                { value: m.executed !== null ? money(m.executed) : '—', bold: m.executed !== null },
                 {
-                  value: m.marketPnL !== null ? `${m.marketPnL >= 0 ? '+' : ''}${fM(m.marketPnL)}` : '—',
+                  value: m.marketPnL !== null ? `${m.marketPnL >= 0 ? '+' : ''}${money(m.marketPnL)}` : '—',
                   color: m.marketPnL !== null ? (m.marketPnL >= 0 ? 'var(--accent)' : 'var(--text-secondary)') : 'var(--text-muted)',
                 },
               ])}

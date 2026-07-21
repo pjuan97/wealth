@@ -189,6 +189,40 @@ export async function backfillRates(
   return { filled, skipped, errors, dates: filledDates }
 }
 
+// ─── Get an average TRM per month across the app's tracked year ─────────────
+// Used to convert an amount from its native currency into the user's chosen
+// display currency, month by month, so the rate used matches when that
+// money actually moved (not today's rate for a transaction from March).
+const TRACKED_MONTHS = [
+  '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06',
+  '2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12',
+]
+
+export async function getMonthlyFxMap(): Promise<{
+  monthlyFx: Record<string, number>
+  avgFxRate: number
+}> {
+  const fxRates = await prisma.dailyFxRate.findMany({
+    where: { currency: 'USD' },
+    orderBy: { date: 'desc' },
+    take: 366,
+  })
+
+  const avgFxRate = fxRates.length > 0
+    ? fxRates.reduce((s, r) => s + Number(r.rate_to_cop), 0) / fxRates.length
+    : 3672
+
+  const monthlyFx: Record<string, number> = {}
+  for (const month of TRACKED_MONTHS) {
+    const monthRates = fxRates.filter(r => r.date.toISOString().startsWith(month))
+    monthlyFx[month] = monthRates.length > 0
+      ? monthRates.reduce((s, r) => s + Number(r.rate_to_cop), 0) / monthRates.length
+      : avgFxRate
+  }
+
+  return { monthlyFx, avgFxRate }
+}
+
 // ─── Get recent rates for UI ─────────────────────────────────────────────────
 export async function getRecentRates(days = 30) {
   const since = new Date()

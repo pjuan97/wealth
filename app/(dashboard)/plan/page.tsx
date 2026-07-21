@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useCurrencyPreference } from '@/app/components/CurrencyPreferenceProvider'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface CategoryDef {
@@ -143,21 +144,30 @@ function formatVariance(diff: number, plan: number, eventType: string): {
 }
 
 // ─── Editable cell ────────────────────────────────────────────────────────────
+// Displays and edits in the user's chosen display currency (global toggle),
+// converting to/from the row's real native currency for storage — so editing
+// "$500" while viewing in USD saves the correct native-currency amount even
+// if the Plan row itself is actually stored in COP, or vice versa.
 function EditableAmount({
   value,
+  nativeCurrency,
+  month,
   onSave,
-  currency = 'COP',
 }: {
   value: number
+  nativeCurrency: Currency
+  month?: string
   onSave: (newValue: number) => Promise<void>
-  currency?: Currency
 }) {
+  const { displayCurrency, convert, convertToNative } = useCurrencyPreference()
   const [editing, setEditing] = useState(false)
   const [raw, setRaw] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const displayValue = convert(value, nativeCurrency, month)
+
   const handleDoubleClick = () => {
-    setRaw(currency === 'USD' ? String(Math.round(value * 100) / 100) : String(Math.round(value)))
+    setRaw(displayCurrency === 'USD' ? String(Math.round(displayValue * 100) / 100) : String(Math.round(displayValue)))
     setEditing(true)
   }
 
@@ -165,7 +175,7 @@ function EditableAmount({
     const num = parseFloat(raw.replace(/[^0-9.]/g, ''))
     if (isNaN(num)) { setEditing(false); return }
     setSaving(true)
-    await onSave(num)
+    await onSave(convertToNative(num, nativeCurrency, month))
     setSaving(false)
     setEditing(false)
   }
@@ -211,7 +221,7 @@ function EditableAmount({
         paddingBottom: '1px',
       }}
     >
-      {formatMoney(value, currency)}
+      {formatMoney(displayValue, displayCurrency)}
     </span>
   )
 }
@@ -478,6 +488,7 @@ function AddPlanItemModal({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function PlanPage() {
+  const { displayCurrency, convert } = useCurrencyPreference()
   const [tab, setTab] = useState<'monthly' | 'annual'>('monthly')
   const [selectedMonth, setSelectedMonth] = useState(getDefaultMonth)
 
@@ -628,14 +639,17 @@ export default function PlanPage() {
   }
 
   // ── Group rows ─────────────────────────────────────────────────────────────
-  // A user's Plan is realistically all one currency (per-row currency is still
-  // respected for each line item) — group totals use the dominant currency of
-  // the rows being summed, falling back to COP when the group is empty.
-  const dominantCurrency = (rs: PlanRow[]): Currency => rs[0]?.currency ?? 'COP'
+  // Every row is converted into the globally chosen display currency before
+  // being summed — a group can freely mix native-COP and native-USD rows.
+  const toDisplay = (value: number, nativeCurrency: Currency, month: string) => convert(value, nativeCurrency, month)
+
+  // Merge the API's COP/USD-split totals into one number in the display currency.
+  const mergedTotal = (t: MonthlyTotals | null, field: keyof CurrencyTotals, month: string): number => {
+    if (!t) return 0
+    return toDisplay(t.COP[field], 'COP', month) + toDisplay(t.USD[field], 'USD', month)
+  }
 
   const incomeRows = rows.filter(r => r.event_type === 'Income')
-  const incomeCurrency = dominantCurrency(incomeRows)
-  const expenseCurrency = dominantCurrency(rows.filter(r => r.event_type === 'Expense'))
   const EXPENSE_ORDER = ['Life', 'Health', 'Travels', 'Others']
 
   const expenseByL2Raw = rows
@@ -701,11 +715,9 @@ export default function PlanPage() {
     ? categoryRows
     : categoryRows.filter(r => r.eventType === annualFilter)
 
-  // Dominant currency for the Cashflow Summary table (per-category rows below
-  // already carry their own `currency` and format correctly regardless).
-  const annualCurrency: Currency = annualSummary.some(r =>
-    r.USD.income_plan !== 0 || r.USD.income_exec !== 0 || r.USD.expense_plan !== 0 || r.USD.expense_exec !== 0
-  ) ? 'USD' : 'COP'
+  // Merge a month's COP/USD-split annual summary into the display currency.
+  const mergedAnnual = (row: AnnualSummaryRow, field: keyof AnnualCurrencySummary): number =>
+    toDisplay(row.COP[field], 'COP', row.month) + toDisplay(row.USD[field], 'USD', row.month)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -844,14 +856,9 @@ export default function PlanPage() {
             ))}
           </div>
 
-          {/* Summary cards — one row per currency that actually has data */}
-          {totals && (['COP', 'USD'] as const)
-            .filter(c => {
-              const t = totals[c]
-              return t.income_plan !== 0 || t.income_exec !== 0 || t.expense_plan !== 0 || t.expense_exec !== 0
-            })
-            .map(c => (
-            <div key={c} style={{
+          {/* Summary cards — COP and USD rows merged into the display currency */}
+          {totals && (
+            <div style={{
               padding: '16px 32px',
               borderBottom: '1px solid var(--border)',
               display: 'grid',
@@ -860,10 +867,10 @@ export default function PlanPage() {
               flexShrink: 0,
             }}>
               {[
-                { label: `Income Plan (${c})`, value: totals[c].income_plan },
-                { label: `Income Executed (${c})`, value: totals[c].income_exec },
-                { label: `Expense Plan (${c})`, value: totals[c].expense_plan },
-                { label: `Expense Executed (${c})`, value: totals[c].expense_exec },
+                { label: 'Income Plan', value: mergedTotal(totals, 'income_plan', selectedMonth) },
+                { label: 'Income Executed', value: mergedTotal(totals, 'income_exec', selectedMonth) },
+                { label: 'Expense Plan', value: mergedTotal(totals, 'expense_plan', selectedMonth) },
+                { label: 'Expense Executed', value: mergedTotal(totals, 'expense_exec', selectedMonth) },
               ].map(card => (
                 <div key={card.label} style={{
                   background: 'var(--bg-surface)',
@@ -875,12 +882,12 @@ export default function PlanPage() {
                     {card.label}
                   </p>
                   <p style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                    {formatMoney(card.value, c)}
+                    {formatMoney(card.value, displayCurrency)}
                   </p>
                 </div>
               ))}
             </div>
-          ))}
+          )}
 
           {/* Table */}
           <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -916,21 +923,21 @@ export default function PlanPage() {
                       {expandedGroups.has('Income') ? '▾' : '▸'} Income
                     </td>
                     <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                      {formatMoney(incomeRows.reduce((s, r) => s + r.plan, 0), incomeCurrency)}
+                      {formatMoney(incomeRows.reduce((s, r) => s + toDisplay(r.plan, r.currency, r.month_label), 0), displayCurrency)}
                     </td>
                     <td style={{ ...tdStyle(), fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                      {formatMoney(incomeRows.reduce((s, r) => s + r.executed, 0), incomeCurrency)}
+                      {formatMoney(incomeRows.reduce((s, r) => s + toDisplay(r.executed, r.currency, r.month_label), 0), displayCurrency)}
                     </td>
                     <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                       {(() => {
-                        const diff = incomeRows.reduce((s, r) => s + r.diff, 0)
-                        return `${diff >= 0 ? '+' : ''}${formatMoney(diff, incomeCurrency)}`
+                        const diff = incomeRows.reduce((s, r) => s + toDisplay(r.diff, r.currency, r.month_label), 0)
+                        return `${diff >= 0 ? '+' : ''}${formatMoney(diff, displayCurrency)}`
                       })()}
                     </td>
                     <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums' }}>
                       {(() => {
-                        const totalPlan = incomeRows.reduce((s, r) => s + r.plan, 0)
-                        const totalExec = incomeRows.reduce((s, r) => s + r.executed, 0)
+                        const totalPlan = incomeRows.reduce((s, r) => s + toDisplay(r.plan, r.currency, r.month_label), 0)
+                        const totalExec = incomeRows.reduce((s, r) => s + toDisplay(r.executed, r.currency, r.month_label), 0)
                         const v = formatVariance(totalExec - totalPlan, totalPlan, 'Income')
                         return <span style={{ fontSize: '12px', fontWeight: 600, color: v.color }}>{v.text}</span>
                       })()}
@@ -948,13 +955,13 @@ export default function PlanPage() {
                         {row.level_3 && <span style={{ color: 'var(--text-primary)', marginLeft: '6px' }}>· {row.level_3}</span>}
                       </td>
                       <td style={tdStyle()}>
-                        <EditableAmount value={row.plan} currency={row.currency} onSave={v => updatePlan(row.id, v)} />
+                        <EditableAmount value={row.plan} nativeCurrency={row.currency} month={row.month_label} onSave={v => updatePlan(row.id, v)} />
                       </td>
                       <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-                        {formatMoney(row.executed, row.currency)}
+                        {formatMoney(toDisplay(row.executed, row.currency, row.month_label), displayCurrency)}
                       </td>
                       <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                        {`${row.diff >= 0 ? '+' : ''}${formatMoney(row.diff, row.currency)}`}
+                        {`${row.diff >= 0 ? '+' : ''}${formatMoney(toDisplay(row.diff, row.currency, row.month_label), displayCurrency)}`}
                       </td>
                       <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums' }}>
                         {(() => {
@@ -981,20 +988,22 @@ export default function PlanPage() {
                       {expandedGroups.has('Expenses') ? '▾' : '▸'} Expenses
                     </td>
                     <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontWeight: 700, fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
-                      {totals ? formatMoney(totals[expenseCurrency].expense_plan, expenseCurrency) : '—'}
+                      {totals ? formatMoney(mergedTotal(totals, 'expense_plan', selectedMonth), displayCurrency) : '—'}
                     </td>
                     <td style={{ ...tdStyle(), fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
-                      {totals ? formatMoney(totals[expenseCurrency].expense_exec, expenseCurrency) : '—'}
+                      {totals ? formatMoney(mergedTotal(totals, 'expense_exec', selectedMonth), displayCurrency) : '—'}
                     </td>
                     <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
                       {totals ? (() => {
-                        const diff = totals[expenseCurrency].expense_exec - totals[expenseCurrency].expense_plan
-                        return `${diff >= 0 ? '+' : ''}${formatMoney(diff, expenseCurrency)}`
+                        const diff = mergedTotal(totals, 'expense_exec', selectedMonth) - mergedTotal(totals, 'expense_plan', selectedMonth)
+                        return `${diff >= 0 ? '+' : ''}${formatMoney(diff, displayCurrency)}`
                       })() : '—'}
                     </td>
                     <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
                       {totals && (() => {
-                        const v = formatVariance(totals[expenseCurrency].expense_exec - totals[expenseCurrency].expense_plan, totals[expenseCurrency].expense_plan, 'Expense')
+                        const exec = mergedTotal(totals, 'expense_exec', selectedMonth)
+                        const plan = mergedTotal(totals, 'expense_plan', selectedMonth)
+                        const v = formatVariance(exec - plan, plan, 'Expense')
                         return <span style={{ fontSize: '12px', fontWeight: 600, color: v.color }}>{v.text}</span>
                       })()}
                     </td>
@@ -1005,10 +1014,9 @@ export default function PlanPage() {
                     const l2rows = expenseByL2[l2]
                     const groupKey = `Expense_${l2}`
                     const isExpanded = expandedGroups.has(groupKey)
-                    const groupPlan = l2rows.reduce((s, r) => s + r.plan, 0)
-                    const groupExec = l2rows.reduce((s, r) => s + r.executed, 0)
+                    const groupPlan = l2rows.reduce((s, r) => s + toDisplay(r.plan, r.currency, r.month_label), 0)
+                    const groupExec = l2rows.reduce((s, r) => s + toDisplay(r.executed, r.currency, r.month_label), 0)
                     const groupDiff = groupExec - groupPlan
-                    const groupCurrency = dominantCurrency(l2rows)
 
                     return [
                       // Subcategory header
@@ -1027,13 +1035,13 @@ export default function PlanPage() {
                           {isExpanded ? '▾' : '▸'} {l2}
                         </td>
                         <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-                          {formatMoney(groupPlan, groupCurrency)}
+                          {formatMoney(groupPlan, displayCurrency)}
                         </td>
                         <td style={{ ...tdStyle(), fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                          {formatMoney(groupExec, groupCurrency)}
+                          {formatMoney(groupExec, displayCurrency)}
                         </td>
                         <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                          {`${groupDiff >= 0 ? '+' : ''}${formatMoney(groupDiff, groupCurrency)}`}
+                          {`${groupDiff >= 0 ? '+' : ''}${formatMoney(groupDiff, displayCurrency)}`}
                         </td>
                         <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums' }}>
                           {(() => {
@@ -1054,13 +1062,13 @@ export default function PlanPage() {
                             {row.level_3 || row.level_2}
                           </td>
                           <td style={tdStyle()}>
-                            <EditableAmount value={row.plan} currency={row.currency} onSave={v => updatePlan(row.id, v)} />
+                            <EditableAmount value={row.plan} nativeCurrency={row.currency} month={row.month_label} onSave={v => updatePlan(row.id, v)} />
                           </td>
                           <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                            {formatMoney(row.executed, row.currency)}
+                            {formatMoney(toDisplay(row.executed, row.currency, row.month_label), displayCurrency)}
                           </td>
                           <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                            {`${row.diff >= 0 ? '+' : ''}${formatMoney(row.diff, row.currency)}`}
+                            {`${row.diff >= 0 ? '+' : ''}${formatMoney(toDisplay(row.diff, row.currency, row.month_label), displayCurrency)}`}
                           </td>
                           <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums' }}>
                             {(() => {
@@ -1099,7 +1107,7 @@ export default function PlanPage() {
               }}>
                 <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
                   <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Cashflow Summary ({annualCurrency})
+                    Cashflow Summary ({displayCurrency})
                   </p>
                   <p style={{ fontSize: '11px', color: 'var(--text-primary)', marginTop: '2px' }}>
                     Plan vs Executed by month · Double row: Plan / Executed
@@ -1117,15 +1125,28 @@ export default function PlanPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {[
-                        { label: 'Income', planKey: 'income_plan' as const, execKey: 'income_exec' as const },
-                        { label: 'Expense', planKey: 'expense_plan' as const, execKey: 'expense_exec' as const },
-                        { label: 'Balance', planKey: 'balance_plan' as const, execKey: 'balance_exec' as const },
-                        { label: 'Savings %', planKey: 'savings_rate_plan' as const, execKey: 'savings_rate_exec' as const },
-                      ].map(({ label, planKey, execKey }) => {
-                        const isRate = label === 'Savings %'
-                        const totalPlan = isRate ? 0 : annualSummary.reduce((s, r) => s + r[annualCurrency][planKey], 0)
-                        const totalExec = isRate ? 0 : annualSummary.reduce((s, r) => s + r[annualCurrency][execKey], 0)
+                      {([
+                        { label: 'Income', key: 'income' as const },
+                        { label: 'Expense', key: 'expense' as const },
+                        { label: 'Balance', key: 'balance' as const },
+                        { label: 'Savings %', key: 'savings' as const },
+                      ]).map(({ label, key }) => {
+                        const isRate = key === 'savings'
+
+                        // Savings % is a ratio, not money — it can't be summed across
+                        // currencies like an amount can. Recompute it from the
+                        // already-merged income/balance instead of merging raw rates.
+                        const getVal = (row: AnnualSummaryRow, phase: 'plan' | 'exec') => {
+                          if (key === 'savings') {
+                            const income = mergedAnnual(row, `income_${phase}`)
+                            const balance = mergedAnnual(row, `balance_${phase}`)
+                            return income > 0 ? balance / income : 0
+                          }
+                          return mergedAnnual(row, `${key}_${phase}`)
+                        }
+
+                        const totalPlan = isRate ? 0 : annualSummary.reduce((s, r) => s + getVal(r, 'plan'), 0)
+                        const totalExec = isRate ? 0 : annualSummary.reduce((s, r) => s + getVal(r, 'exec'), 0)
 
                         return [
                           // Plan row
@@ -1137,19 +1158,19 @@ export default function PlanPage() {
                             {annualSummary.map(row => (
                               <td key={row.month} style={{ padding: '8px 16px 2px', fontSize: '11px', textAlign: 'right', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                                 {isRate
-                                  ? formatAchievementPct(row[annualCurrency][planKey])
-                                  : formatMoney(row[annualCurrency][planKey], annualCurrency)}
+                                  ? formatAchievementPct(getVal(row, 'plan'))
+                                  : formatMoney(getVal(row, 'plan'), displayCurrency)}
                               </td>
                             ))}
                             <td style={{ padding: '8px 16px 2px', fontSize: '11px', textAlign: 'right', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                              {isRate ? '—' : formatMoney(totalPlan, annualCurrency)}
+                              {isRate ? '—' : formatMoney(totalPlan, displayCurrency)}
                             </td>
                           </tr>,
                           // Exec row
                           <tr key={`${label}_exec`} style={{ borderBottom: '1px solid var(--border)' }}>
                             <td style={{ padding: '2px 16px 10px 20px', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }} />
                             {annualSummary.map(row => {
-                              const val = row[annualCurrency][execKey]
+                              const val = getVal(row, 'exec')
                               return (
                                 <td key={row.month} style={{
                                   padding: '2px 16px 10px',
@@ -1161,12 +1182,12 @@ export default function PlanPage() {
                                 }}>
                                   {isRate
                                     ? formatAchievementPct(val)
-                                    : formatMoney(val, annualCurrency)}
+                                    : formatMoney(val, displayCurrency)}
                                 </td>
                               )
                             })}
                             <td style={{ padding: '2px 16px 10px', fontSize: '13px', fontWeight: 700, textAlign: 'right', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                              {isRate ? '—' : formatMoney(totalExec, annualCurrency)}
+                              {isRate ? '—' : formatMoney(totalExec, displayCurrency)}
                             </td>
                           </tr>,
                         ]
@@ -1248,7 +1269,7 @@ export default function PlanPage() {
                               ) : (
                                 <div>
                                   <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                                    {formatMoney(m.exec, cat.currency)}
+                                    {formatMoney(toDisplay(m.exec, cat.currency, m.month), displayCurrency)}
                                   </div>
                                   {m.plan > 0 && (
                                     <div style={{ fontSize: '10px', color: 'var(--text-primary)', marginTop: '1px' }}>

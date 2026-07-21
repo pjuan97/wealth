@@ -131,23 +131,23 @@ export async function GET(request: NextRequest) {
         }),
       ])
 
-      // Which currency this user's Plan is actually denominated in.
-      const currency: 'COP' | 'USD' = plans.some(p => p.currency === 'USD') &&
-        !plans.some(p => p.currency === 'COP') ? 'USD' : 'COP'
-      const field = currency === 'USD' ? 'usd_amount' : 'amount'
-
+      // Every plan row and transaction keeps its own native currency — no
+      // "dominant currency" picked for the whole user. The client merges
+      // the COP/USD pools into its chosen display currency using each row's
+      // own month's TRM.
       const planVsExec = MONTHS.map(m => {
         const mPlans = plans.filter(p => p.month_label === m)
         const mTxs = transactions.filter(t => t.month_label === m)
-        const incomePlan = mPlans.filter(p => p.event_type === 'Income').reduce((s, p) => s + Number(p.plan), 0)
-        const expensePlan = mPlans.filter(p => p.event_type === 'Expense').reduce((s, p) => s + Number(p.plan), 0)
-        const incomeExec = mTxs.filter(t => t.event_type === 'Income').reduce((s, t) => s + (Number(t[field]) || 0), 0)
-        const expenseExec = mTxs.filter(t => t.event_type === 'Expense').reduce((s, t) => s + (Number(t[field]) || 0), 0)
+        const sumPlan = (eventType: string, currency: 'COP' | 'USD') =>
+          mPlans.filter(p => p.event_type === eventType && p.currency === currency).reduce((s, p) => s + Number(p.plan), 0)
+        const sumExec = (eventType: string, field: 'amount' | 'usd_amount') =>
+          mTxs.filter(t => t.event_type === eventType).reduce((s, t) => s + (Number(t[field]) || 0), 0)
         return {
           month: m, label: MONTH_SHORT[m],
-          incomePlan, incomeExec, expensePlan, expenseExec,
-          incomeVariance: incomePlan > 0 ? (incomeExec - incomePlan) / incomePlan : null,
-          expenseVariance: expensePlan > 0 ? (expenseExec - expensePlan) / expensePlan : null,
+          incomePlanCOP: sumPlan('Income', 'COP'), incomePlanUSD: sumPlan('Income', 'USD'),
+          expensePlanCOP: sumPlan('Expense', 'COP'), expensePlanUSD: sumPlan('Expense', 'USD'),
+          incomeExecCOP: sumExec('Income', 'amount'), incomeExecUSD: sumExec('Income', 'usd_amount'),
+          expenseExecCOP: sumExec('Expense', 'amount'), expenseExecUSD: sumExec('Expense', 'usd_amount'),
         }
       })
 
@@ -155,16 +155,23 @@ export async function GET(request: NextRequest) {
         plans.filter(p => p.event_type === 'Expense').map(p => p.level_2)
       )].sort()
 
+      // A category's currency is assumed consistent — take it from any plan row that has it.
+      const categoryCurrency: Record<string, 'COP' | 'USD'> = {}
+      for (const cat of expenseCategories) {
+        categoryCurrency[cat] = (plans.find(p => p.event_type === 'Expense' && p.level_2 === cat)?.currency as 'COP' | 'USD') || 'COP'
+      }
+
       const expenseByL2 = MONTHS.map(m => {
         const mTxs = transactions.filter(t => t.month_label === m && t.event_type === 'Expense')
         const byLevel2: Record<string, number> = {}
         for (const cat of expenseCategories) {
+          const field = categoryCurrency[cat] === 'USD' ? 'usd_amount' : 'amount'
           byLevel2[cat] = mTxs.filter(t => t.level_2 === cat).reduce((s, t) => s + (Number(t[field]) || 0), 0)
         }
         return { month: m, label: MONTH_SHORT[m], byLevel2 }
       })
 
-      return NextResponse.json({ currency, planVsExec, expenseByL2, expenseCategories })
+      return NextResponse.json({ planVsExec, expenseByL2, expenseCategories, categoryCurrency })
     }
 
     if (section === 'monthly') {
@@ -179,20 +186,17 @@ export async function GET(request: NextRequest) {
         }),
       ])
 
-      // A category's currency is assumed consistent — take it from any plan row that has it.
-      const currencyByCategory = new Map<string, 'COP' | 'USD'>()
-      for (const p of plans) {
-        const key = `${p.level_2}||${p.level_3 || ''}`
-        if (!currencyByCategory.has(key)) currencyByCategory.set(key, p.currency as 'COP' | 'USD')
-      }
-
+      // Each category's transactions are summed per-field independently — a
+      // transaction can carry both `amount` (COP) and `usd_amount` at once,
+      // so the COP pool and USD pool are not mutually exclusive.
       const copExecMap = new Map<string, number>()
       const usdExecMap = new Map<string, number>()
       for (const tx of transactions) {
         const key = `${tx.level_2}||${tx.level_3 || ''}`
+        const copVal = Number(tx.amount) || 0
         const usdVal = Number(tx.usd_amount) || 0
+        if (copVal !== 0) copExecMap.set(key, (copExecMap.get(key) || 0) + copVal)
         if (usdVal !== 0) usdExecMap.set(key, (usdExecMap.get(key) || 0) + usdVal)
-        else copExecMap.set(key, (copExecMap.get(key) || 0) + (Number(tx.amount) || 0))
       }
 
       const rows = plans.map(p => {
@@ -210,18 +214,15 @@ export async function GET(request: NextRequest) {
         }
       })
 
-      // Overall KPIs use whichever currency this month's plans are in (falls back to COP if no plan yet).
-      const monthCurrency: 'COP' | 'USD' = plans.length ? (plans[0].currency as 'COP' | 'USD') : 'COP'
-      const field = monthCurrency === 'USD' ? 'usd_amount' : 'amount'
-      const income = transactions.filter(t => t.event_type === 'Income').reduce((s, t) => s + (Number(t[field]) || 0), 0)
-      const expense = transactions.filter(t => t.event_type === 'Expense').reduce((s, t) => s + (Number(t[field]) || 0), 0)
-
-      const expensePie = rows
-        .filter(r => r.event_type === 'Expense' && r.executed > 0)
-        .map(r => ({ name: r.level_3 || r.level_2, value: r.executed }))
+      // KPIs split into both pools — the client merges them into its chosen
+      // display currency using this month's own TRM.
+      const incomeCOP = transactions.filter(t => t.event_type === 'Income').reduce((s, t) => s + (Number(t.amount) || 0), 0)
+      const incomeUSD = transactions.filter(t => t.event_type === 'Income').reduce((s, t) => s + (Number(t.usd_amount) || 0), 0)
+      const expenseCOP = transactions.filter(t => t.event_type === 'Expense').reduce((s, t) => s + (Number(t.amount) || 0), 0)
+      const expenseUSD = transactions.filter(t => t.event_type === 'Expense').reduce((s, t) => s + (Number(t.usd_amount) || 0), 0)
 
       return NextResponse.json({
-        rows, kpis: { income, expense, balance: income - expense, month, currency: monthCurrency }, expensePie,
+        rows, kpis: { incomeCOP, incomeUSD, expenseCOP, expenseUSD, month },
       })
     }
 

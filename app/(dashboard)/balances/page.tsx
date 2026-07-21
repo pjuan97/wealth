@@ -5,6 +5,7 @@ import {
   AreaChart, Area, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
+import { useCurrencyPreference } from '@/app/components/CurrencyPreferenceProvider'
 
 interface AccountBalance {
   name: string
@@ -93,10 +94,10 @@ interface TooltipProps {
   active?: boolean
   payload?: Array<{ value: number; dataKey: string; color: string }>
   label?: string
-  fxRate: number
+  formatValue: (n: number) => string
 }
 
-function CustomTooltip({ active, payload, label, fxRate }: TooltipProps) {
+function CustomTooltip({ active, payload, label, formatValue }: TooltipProps) {
   if (!active || !payload || !payload.length) return null
   return (
     <div style={{
@@ -113,10 +114,7 @@ function CustomTooltip({ active, payload, label, fxRate }: TooltipProps) {
         p.dataKey !== 'trend' && (
           <div key={i} style={{ marginBottom: '4px' }}>
             <p style={{ color: '#f1f5f9', fontSize: '15px', fontWeight: 700 }}>
-              {formatCOP(p.value)}
-            </p>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>
-              {formatUSD(p.value / fxRate)}
+              {formatValue(p.value)}
             </p>
           </div>
         )
@@ -126,6 +124,7 @@ function CustomTooltip({ active, payload, label, fxRate }: TooltipProps) {
 }
 
 export default function BalancesPage() {
+  const { displayCurrency, convert } = useCurrencyPreference()
   const [data, setData] = useState<BalancesData | null>(null)
   const [loading, setLoading] = useState(true)
   const [chartView, setChartView] = useState<'netWorth' | 'assets'>('netWorth')
@@ -148,6 +147,14 @@ export default function BalancesPage() {
   if (!data) return null
 
   const fxRate = data.fxRate
+  // Every account carries a real COP figure and a real USD figure (native for
+  // USD accounts, FX-derived only as a fallback) — the toggle picks which one
+  // is primary, it's never a blanket division by today's rate.
+  const primary = (cop: number, usd: number) => displayCurrency === 'USD' ? usd : cop
+  const secondary = (cop: number, usd: number) => displayCurrency === 'USD' ? cop : usd
+  const fmtPrimary = (n: number) => displayCurrency === 'USD' ? formatUSD(n) : formatCOP(n)
+  const fmtSecondary = (n: number) => displayCurrency === 'USD' ? formatCOP(n) : formatUSD(n)
+
   // Assets = cash + investment (balance positivo)
   const assets = (data.accounts || []).filter(a =>
     (a.type === 'cash' || a.type === 'investment') && a.balance >= 0
@@ -158,8 +165,13 @@ export default function BalancesPage() {
     a.type === 'debt' || a.balance < 0
   )
 
+  // The monthly evolution series only has a COP figure per month (no real
+  // per-month USD split) — convert with that month's own TRM when USD is chosen.
   const chartDataRaw = (data.netWorthEvolution || []).map(p => ({
     ...p,
+    netWorth: convert(p.netWorth, 'COP', p.month),
+    assets: p.assets !== undefined ? convert(p.assets, 'COP', p.month) : p.assets,
+    liabilities: p.liabilities !== undefined ? convert(p.liabilities, 'COP', p.month) : p.liabilities,
     displayLabel: MONTH_SHORT[p.month] || p.month,
   }))
   const chartData = computeTrend(chartDataRaw) as (MonthlyPoint & { trend?: number; displayLabel: string })[]
@@ -192,9 +204,9 @@ export default function BalancesPage() {
         {/* Hero cards */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
           {[
-            { label: 'Net Worth', cop: data.netWorth, usd: data.netWorth / fxRate, primary: true },
-            { label: 'Total Assets', cop: data.totalAssets, usd: data.totalAssets / fxRate, primary: false },
-            { label: 'Total Liabilities', cop: -data.totalLiabilities, usd: data.totalLiabilities / fxRate, primary: false },
+            { label: 'Net Worth', cop: data.netWorth, usd: data.netWorthUsd, primary: true },
+            { label: 'Total Assets', cop: data.totalAssets, usd: data.totalAssetsUsd, primary: false },
+            { label: 'Total Liabilities', cop: -data.totalLiabilities, usd: -data.totalLiabilitiesUsd, primary: false },
           ].map(card => (
             <div key={card.label} style={{
               background: card.primary ? 'var(--bg-elevated)' : 'var(--bg-surface)',
@@ -205,13 +217,13 @@ export default function BalancesPage() {
               <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>
                 {card.label}
               </p>
-              {/* COP — large and prominent */}
-              <p style={{ fontSize: '22px', fontWeight: 800, color: card.cop >= 0 ? 'var(--text-primary)' : 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>
-                {formatCOP(card.cop)}
+              {/* Chosen display currency — large and prominent */}
+              <p style={{ fontSize: '22px', fontWeight: 800, color: primary(card.cop, card.usd) >= 0 ? 'var(--text-primary)' : 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>
+                {fmtPrimary(primary(card.cop, card.usd))}
               </p>
-              {/* USD — clearly visible */}
+              {/* Other currency — clearly visible reference */}
               <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', marginTop: '6px', fontVariantNumeric: 'tabular-nums' }}>
-                {formatUSD(card.usd)}
+                {fmtSecondary(secondary(card.cop, card.usd))}
               </p>
             </div>
           ))}
@@ -234,11 +246,7 @@ export default function BalancesPage() {
                 <p style={{ fontSize: '13px', color: changePositive ? '#94a3b8' : '#64748b', marginTop: '4px', fontWeight: 500 }}>
                   {changePositive ? '↑' : '↓'}{' '}
                   <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>
-                    {formatCOP(Math.abs(netWorthChange))}
-                  </span>
-                  {' '}
-                  <span style={{ color: 'var(--text-secondary)' }}>
-                    ({formatUSD(Math.abs(netWorthChange) / fxRate)})
+                    {fmtPrimary(Math.abs(netWorthChange))}
                   </span>
                   {' '}since January
                 </p>
@@ -301,7 +309,7 @@ export default function BalancesPage() {
                 width={62}
               />
 
-              <Tooltip content={<CustomTooltip fxRate={fxRate} />} />
+              <Tooltip content={<CustomTooltip formatValue={fmtPrimary} />} />
 
               {chartView === 'netWorth' ? (
                 <>
@@ -391,10 +399,10 @@ export default function BalancesPage() {
               <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>Assets</p>
               <div style={{ textAlign: 'right' }}>
                 <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                  {formatCOP(data.totalAssets)}
+                  {fmtPrimary(primary(data.totalAssets, data.totalAssetsUsd))}
                 </p>
                 <p style={{ fontSize: '11px', color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
-                  {formatUSD(data.totalAssets / fxRate)}
+                  {fmtSecondary(secondary(data.totalAssets, data.totalAssetsUsd))}
                 </p>
               </div>
             </div>
@@ -418,17 +426,17 @@ export default function BalancesPage() {
                         {a.name}
                       </p>
                       <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px', fontVariantNumeric: 'tabular-nums' }}>
-                        {formatUSD(a.balance / fxRate)}
+                        {fmtSecondary(secondary(a.balance, a.balanceUsd))}
                       </p>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                      {formatCOP(a.balance)}
+                      {fmtPrimary(primary(a.balance, a.balanceUsd))}
                     </p>
                     <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>
-                      {data.totalAssets > 0
-                        ? `${((a.balance / data.totalAssets) * 100).toFixed(1)}%`
+                      {primary(data.totalAssets, data.totalAssetsUsd) > 0
+                        ? `${((primary(a.balance, a.balanceUsd) / primary(data.totalAssets, data.totalAssetsUsd)) * 100).toFixed(1)}%`
                         : '—'}
                     </p>
                   </div>
@@ -454,10 +462,10 @@ export default function BalancesPage() {
               <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>Liabilities</p>
               <div style={{ textAlign: 'right' }}>
                 <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
-                  {formatCOP(data.totalLiabilities)}
+                  {fmtPrimary(primary(data.totalLiabilities, data.totalLiabilitiesUsd))}
                 </p>
                 <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                  {formatUSD(data.totalLiabilities / fxRate)}
+                  {fmtSecondary(secondary(data.totalLiabilities, data.totalLiabilitiesUsd))}
                 </p>
               </div>
             </div>
@@ -485,13 +493,13 @@ export default function BalancesPage() {
                         {a.name}
                       </p>
                       <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px', fontVariantNumeric: 'tabular-nums' }}>
-                        {formatUSD(Math.abs(a.balance) / fxRate)}
+                        {fmtSecondary(secondary(Math.abs(a.balance), Math.abs(a.balanceUsd)))}
                       </p>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
-                      {formatCOP(Math.abs(a.balance))}
+                      {fmtPrimary(primary(Math.abs(a.balance), Math.abs(a.balanceUsd)))}
                     </p>
                   </div>
                 </div>
@@ -520,7 +528,9 @@ export default function BalancesPage() {
             marginBottom: '12px',
           }}>
             {assets.map((a, i) => {
-              const pct = data.totalAssets > 0 ? (a.balance / data.totalAssets) * 100 : 0
+              const pct = primary(data.totalAssets, data.totalAssetsUsd) > 0
+                ? (primary(a.balance, a.balanceUsd) / primary(data.totalAssets, data.totalAssetsUsd)) * 100
+                : 0
               const colors = ['#e2e8f0', '#94a3b8', '#64748b', '#475569', '#334155', '#1e293b']
               return (
                 <div
@@ -537,7 +547,9 @@ export default function BalancesPage() {
           {/* Legend */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px 24px' }}>
             {assets.map((a, i) => {
-              const pct = data.totalAssets > 0 ? (a.balance / data.totalAssets) * 100 : 0
+              const pct = primary(data.totalAssets, data.totalAssetsUsd) > 0
+                ? (primary(a.balance, a.balanceUsd) / primary(data.totalAssets, data.totalAssetsUsd)) * 100
+                : 0
               const colors = ['#e2e8f0', '#94a3b8', '#64748b', '#475569', '#334155', '#1e293b']
               return (
                 <div key={a.name} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

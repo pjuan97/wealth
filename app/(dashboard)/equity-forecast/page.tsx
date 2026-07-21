@@ -61,6 +61,13 @@ const MONTHS = [
   { key: '2026-12', label: 'December' },
 ]
 
+function getCurrentMonth(): string {
+  const todayKey = new Date().toISOString().slice(0, 7)
+  const keys = MONTHS.map(m => m.key)
+  if (keys.includes(todayKey)) return todayKey
+  return todayKey < keys[0] ? keys[0] : keys[keys.length - 1]
+}
+
 const MONTH_SHORT: Record<string, string> = {
   '2026-01': 'Jan', '2026-02': 'Feb', '2026-03': 'Mar',
   '2026-04': 'Apr', '2026-05': 'May', '2026-06': 'Jun',
@@ -309,7 +316,7 @@ function EditableStartBalance({
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function EquityForecastPage() {
   const [tab, setTab] = useState<'monthly' | 'annual'>('monthly')
-  const [selectedMonth, setSelectedMonth] = useState('2026-04')
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth)
 
   // Monthly state
   const [rows, setRows] = useState<EquityRow[]>([])

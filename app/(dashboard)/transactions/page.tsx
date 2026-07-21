@@ -64,6 +64,13 @@ const MONTHS = [
   { key: '2026-12', label: 'December' },
 ]
 
+function getCurrentMonth(): string {
+  const todayKey = new Date().toISOString().slice(0, 7)
+  const keys = MONTHS.map(m => m.key)
+  if (keys.includes(todayKey)) return todayKey
+  return todayKey < keys[0] ? keys[0] : keys[keys.length - 1]
+}
+
 function formatCOP(n: number) {
   return new Intl.NumberFormat('es-CO', {
     style: 'currency', currency: 'COP',
@@ -203,7 +210,7 @@ function InlineEditCell({
 }
 
 export default function TransactionsPage() {
-  const [selectedMonth, setSelectedMonth] = useState('2026-04')
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [fxRate, setFxRate] = useState<number | null>(null)
   const [nextCursor, setNextCursor] = useState<number | null>(null)

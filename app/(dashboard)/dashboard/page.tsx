@@ -55,11 +55,16 @@ interface EquityAccount {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const CURRENT_MONTH = '2026-06'
 const MONTHS = [
   '2026-01','2026-02','2026-03','2026-04','2026-05','2026-06',
   '2026-07','2026-08','2026-09','2026-10','2026-11','2026-12',
 ]
+function getCurrentMonth(): string {
+  const todayKey = new Date().toISOString().slice(0, 7)
+  if (MONTHS.includes(todayKey)) return todayKey
+  return todayKey < MONTHS[0] ? MONTHS[0] : MONTHS[MONTHS.length - 1]
+}
+const CURRENT_MONTH = getCurrentMonth()
 const MONTH_LABELS: Record<string, string> = {
   '2026-01':'January','2026-02':'February','2026-03':'March','2026-04':'April',
   '2026-05':'May','2026-06':'June','2026-07':'July','2026-08':'August',

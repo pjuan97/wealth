@@ -16,15 +16,12 @@ interface CategoryRow {
   eventType: string
   level_2: string
   level_3: string | null
+  currency: 'COP' | 'USD'
   months: MonthData[]
   total: { plan: number; executed: number; diff: number; variance: number | null }
 }
 
-interface MonthlySummary {
-  month: string
-  isPast: boolean
-  isCurrent: boolean
-  isFuture: boolean
+interface CurrencyMonthData {
   openingBalance: number
   incomePlan: number
   incomeExec: number
@@ -34,15 +31,27 @@ interface MonthlySummary {
   resultadoExec: number
   balancePlan: number
   balanceExec: number
-  fx: number
 }
 
-interface ComputedSummary extends MonthlySummary {
+interface MonthlySummary {
+  month: string
+  isPast: boolean
+  isCurrent: boolean
+  isFuture: boolean
+  fx: number
+  COP: CurrencyMonthData
+  USD: CurrencyMonthData
+}
+
+interface ComputedSummary extends CurrencyMonthData {
+  month: string
+  isPast: boolean
+  isCurrent: boolean
+  isFuture: boolean
   balanceEffective: number
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const CURRENT_MONTH = '2026-06'
 const MONTHS = [
   '2026-01','2026-02','2026-03','2026-04','2026-05','2026-06',
   '2026-07','2026-08','2026-09','2026-10','2026-11','2026-12',
@@ -52,14 +61,22 @@ const MONTH_SHORT: Record<string, string> = {
   '2026-05':'May','2026-06':'Jun','2026-07':'Jul','2026-08':'Aug',
   '2026-09':'Sep','2026-10':'Oct','2026-11':'Nov','2026-12':'Dec',
 }
-const EXPENSE_ORDER = ['Life', 'Health', 'Travels', 'Others']
+
+function getCurrentMonth(): string {
+  const todayKey = new Date().toISOString().slice(0, 7)
+  if (MONTHS.includes(todayKey)) return todayKey
+  return todayKey < MONTHS[0] ? MONTHS[0] : MONTHS[MONTHS.length - 1]
+}
+const CURRENT_MONTH = getCurrentMonth()
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function fM(n: number, currency: 'COP' | 'USD', fx: number): string {
-  const val = currency === 'USD' ? n / fx : n
-  if (val === 0) return '—'
-  const abs = Math.abs(val)
-  const sign = val < 0 ? '-' : ''
+// A row's `currency` is always its real, native currency (no FX conversion) —
+// the COP/USD toggle picks which currency's rows/pool to display, it never
+// converts one currency's numbers into the other.
+function fM(n: number, currency: 'COP' | 'USD'): string {
+  if (n === 0) return '—'
+  const abs = Math.abs(n)
+  const sign = n < 0 ? '-' : ''
   if (currency === 'USD') {
     if (abs >= 1000) return `${sign}${(abs/1000).toFixed(1)}K`
     return `${sign}${abs.toFixed(0)}`
@@ -215,26 +232,23 @@ function EditablePlanCell({
   value,
   month,
   currency,
-  fx,
   onChange,
 }: {
   value: number
   month: string
   currency: 'COP' | 'USD'
-  fx: number
   onChange: (v: number) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [raw, setRaw] = useState('')
 
-  const displayVal = currency === 'USD' ? value / fx : value
+  const displayVal = value
 
   const handleSave = () => {
     const cleaned = raw.replace(/[^0-9.]/g, '')
     const num = parseFloat(cleaned)
     if (!isNaN(num)) {
-      const copVal = currency === 'USD' ? Math.round(num * fx) : Math.round(num)
-      onChange(copVal)
+      onChange(currency === 'USD' ? Math.round(num * 100) / 100 : Math.round(num))
     }
     setEditing(false)
   }
@@ -277,7 +291,7 @@ function EditablePlanCell({
         display: 'block', textAlign: 'right',
       }}
     >
-      {fM(value, currency, fx)}
+      {fM(value, currency)}
     </span>
   )
 }
@@ -287,11 +301,9 @@ export default function CashflowPage() {
   const [categoryRows, setCategoryRows] = useState<CategoryRow[]>([])
   const [monthlySummary, setMonthlySummary] = useState<MonthlySummary[]>([])
   const [cashAccounts, setCashAccounts] = useState<string[]>([])
-  const [openingAccounts, setOpeningAccounts] = useState<string[]>([
-    'Bancolombia (Cash)', 'Dollar App (Cash)',
-  ])
-  const [avgFxRate, setAvgFxRate] = useState(3672)
-  const [monthlyFx, setMonthlyFx] = useState<Record<string, number>>({})
+  // Empty by default — the API fills in this user's own active cash accounts
+  // when no explicit selection is sent (see load() below).
+  const [openingAccounts, setOpeningAccounts] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [currency, setCurrency] = useState<'COP' | 'USD'>('COP')
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
@@ -313,12 +325,21 @@ export default function CashflowPage() {
       if (accs.length) params.set('openingAccounts', accs.join(','))
       const res = await fetch(`/api/cashflow?${params}`)
       const data = await res.json()
-      setCategoryRows(data.categoryRows || [])
+      const rows: CategoryRow[] = data.categoryRows || []
+      setCategoryRows(rows)
       setMonthlySummary(data.monthlySummary || [])
       setCashAccounts(data.cashAccounts || [])
-      setAvgFxRate(data.avgFxRate || 3672)
-      setMonthlyFx(data.monthlyFx || {})
       setOpeningAccounts(data.openingAccounts || accs)
+
+      // Default the currency toggle to whichever pool actually has data —
+      // a fixed COP default meant a USD-only profile (like Dani's) saw an
+      // empty table until manually switching the toggle.
+      setCurrency(prev => {
+        const hasCurrent = rows.some(r => r.currency === prev)
+        if (hasCurrent) return prev
+        const hasUSD = rows.some(r => r.currency === 'USD')
+        return hasUSD ? 'USD' : 'COP'
+      })
 
       // Build original plans map
       const orig: Record<string, { planId: number; value: number }> = {}
@@ -360,17 +381,20 @@ export default function CashflowPage() {
 
   // Compute rolling cashflow with overrides applied (iterative to avoid circular ref)
   const computedSummary: ComputedSummary[] = useMemo(() => {
-    if (!monthlySummary.length || !categoryRows.length) {
-      return monthlySummary.map(ms => ({ ...ms, balanceEffective: ms.balanceExec }))
+    if (!monthlySummary.length) {
+      return []
     }
 
-    const incRows = categoryRows.filter(r => r.eventType === 'Income')
-    const expRows = categoryRows.filter(r => r.eventType === 'Expense')
+    // incRows/expRows only include rows in the currently toggled currency —
+    // matches incomeRows/expenseByL2 used for the category breakdown below.
+    const incRows = categoryRows.filter(r => r.eventType === 'Income' && r.currency === currency)
+    const expRows = categoryRows.filter(r => r.eventType === 'Expense' && r.currency === currency)
 
     const result: ComputedSummary[] = []
 
     for (let i = 0; i < monthlySummary.length; i++) {
       const ms = monthlySummary[i]
+      const pool = ms[currency]
       const m = ms.month
 
       const incomePlan = incRows.reduce((s, r) => {
@@ -383,12 +407,14 @@ export default function CashflowPage() {
         return s + getPlanValue(r.level_2, r.level_3, m, mData?.plan || 0)
       }, 0)
 
+      const incomeExec = pool.incomeExec
+      const expenseExec = pool.expenseExec
       const resultadoPlan = incomePlan - expensePlan
-      const resultadoExec = ms.incomeExec - ms.expenseExec
+      const resultadoExec = incomeExec - expenseExec
 
       // Opening balance: first month from API, rest from previous month's effective balance
       const openingBalance = i === 0
-        ? ms.openingBalance
+        ? pool.openingBalance
         : result[i - 1].balanceEffective
 
       const balancePlan = openingBalance + resultadoPlan
@@ -396,10 +422,15 @@ export default function CashflowPage() {
       const balanceEffective = (ms.isPast || ms.isCurrent) ? balanceExec : balancePlan
 
       result.push({
-        ...ms,
+        month: ms.month,
+        isPast: ms.isPast,
+        isCurrent: ms.isCurrent,
+        isFuture: ms.isFuture,
         openingBalance,
         incomePlan,
+        incomeExec,
         expensePlan,
+        expenseExec,
         resultadoPlan,
         resultadoExec,
         balancePlan,
@@ -409,7 +440,7 @@ export default function CashflowPage() {
     }
 
     return result
-  }, [monthlySummary, categoryRows, getPlanValue])
+  }, [monthlySummary, categoryRows, getPlanValue, currency])
 
   // Save changes to DB
   const saveChanges = async () => {
@@ -435,15 +466,14 @@ export default function CashflowPage() {
     setShowSaveModal(false)
   }
 
-  // Group data
-  const incomeRows = categoryRows.filter(r => r.eventType === 'Income')
+  // Group data — the COP/USD toggle picks which currency's rows to show,
+  // it never converts one currency's numbers into the other.
+  const incomeRows = categoryRows.filter(r => r.eventType === 'Income' && r.currency === currency)
   const expenseByL2: Record<string, CategoryRow[]> = {}
-  categoryRows.filter(r => r.eventType === 'Expense').forEach(r => {
+  categoryRows.filter(r => r.eventType === 'Expense' && r.currency === currency).forEach(r => {
     if (!expenseByL2[r.level_2]) expenseByL2[r.level_2] = []
     expenseByL2[r.level_2].push(r)
   })
-
-  const getFx = (month: string) => monthlyFx[month] || avgFxRate
 
   // ── Column styles ──────────────────────────────────────────────────────────
   const COL_W = '90px'
@@ -522,11 +552,6 @@ export default function CashflowPage() {
           </h1>
           <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
             Plan vs Ejecutado · 2026 · Rolling Opening Balance
-            {currency === 'USD' && (
-              <span style={{ marginLeft: '8px', color: 'var(--text-muted)', fontSize: '11px' }}>
-                · Avg TRM: ${avgFxRate.toFixed(0)} COP/USD (projected months)
-              </span>
-            )}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -654,14 +679,13 @@ export default function CashflowPage() {
               {MONTHS.map(m => {
                 const ms = computedSummary.find(s => s.month === m)
                 const val = ms?.openingBalance || 0
-                const fx = getFx(m)
                 return (
                   <Fragment key={m}>
                     <td style={{ ...cellStyle(m), background: isCurrent(m) ? 'rgba(249,115,22,0.06)' : 'var(--bg-surface)' }}>
-                      {fM(val, currency, fx)}
+                      {fM(val, currency)}
                     </td>
                     <td style={{ ...cellStyle(m), fontWeight: 600, background: isCurrent(m) ? 'rgba(249,115,22,0.06)' : 'var(--bg-surface)' }}>
-                      {fM(val, currency, fx)}
+                      {fM(val, currency)}
                     </td>
                     <td style={{ ...cellStyle(m), background: isCurrent(m) ? 'rgba(249,115,22,0.06)' : 'var(--bg-surface)' }}>
                       —
@@ -682,14 +706,13 @@ export default function CashflowPage() {
                 const plan = ms?.incomePlan || 0
                 const exec = ms?.incomeExec || 0
                 const v = fVar(plan > 0 ? (exec - plan) / plan : null, 'income')
-                const fx = getFx(m)
                 return (
                   <Fragment key={m}>
                     <td style={{ ...cellStyle(m), background: isCurrent(m) ? 'rgba(249,115,22,0.08)' : 'var(--bg-elevated)' }}>
-                      {fM(plan, currency, fx)}
+                      {fM(plan, currency)}
                     </td>
                     <td style={{ ...cellStyle(m), fontWeight: 600, background: isCurrent(m) ? 'rgba(249,115,22,0.08)' : 'var(--bg-elevated)' }}>
-                      {fM(exec, currency, fx)}
+                      {fM(exec, currency)}
                     </td>
                     <td style={{ ...cellStyle(m), color: v.color, fontWeight: 600, background: isCurrent(m) ? 'rgba(249,115,22,0.08)' : 'var(--bg-elevated)' }}>
                       {v.text}
@@ -698,7 +721,7 @@ export default function CashflowPage() {
                 )
               })}
               <td style={{ ...totalCell, background: 'var(--bg-elevated)' }}>
-                {fM(computedSummary.reduce((s, m) => s + m.incomeExec, 0), currency, avgFxRate)}
+                {fM(computedSummary.reduce((s, m) => s + m.incomeExec, 0), currency)}
               </td>
             </tr>
 
@@ -714,7 +737,6 @@ export default function CashflowPage() {
                   const plan = getPlanValue(row.level_2, row.level_3, md.month, md.plan)
                   const isModified = `${row.level_2}||${row.level_3 || ''}||${md.month}` in planOverrides
                   const v = fVar(plan > 0 ? (md.executed - plan) / plan : null, 'income')
-                  const fx = getFx(md.month)
                   return (
                     <Fragment key={md.month}>
                       <td style={{ ...cellStyle(md.month), background: isModified ? 'rgba(249,115,22,0.06)' : cellStyle(md.month).background }}>
@@ -722,21 +744,20 @@ export default function CashflowPage() {
                           value={plan}
                           month={md.month}
                           currency={currency}
-                          fx={fx}
                           onChange={v => setPlan(row.level_2, row.level_3, md.month, v)}
                         />
                       </td>
-                      <td style={cellStyle(md.month)}>{fM(md.executed, currency, fx)}</td>
+                      <td style={cellStyle(md.month)}>{fM(md.executed, currency)}</td>
                       <td style={{ ...cellStyle(md.month), color: v.color, fontSize: '10px' }}>{v.text}</td>
                     </Fragment>
                   )
                 })}
-                <td style={totalCell}>{fM(row.total.executed, currency, avgFxRate)}</td>
+                <td style={totalCell}>{fM(row.total.executed, currency)}</td>
               </tr>
             ))}
 
-            {/* ── EXPENSE GROUPS ───────────────────────────────────── */}
-            {EXPENSE_ORDER.filter(l2 => expenseByL2[l2]).map(l2 => {
+            {/* ── EXPENSE GROUPS (all Level 2 groups present in this user's data) ── */}
+            {Object.keys(expenseByL2).map(l2 => {
               const l2rows = expenseByL2[l2]
               const groupKey = `Expense_${l2}`
               const isExpanded = expandedGroups.has(groupKey)
@@ -750,17 +771,16 @@ export default function CashflowPage() {
                       const gPlan = l2rows.reduce((s, r) => s + getPlanValue(r.level_2, r.level_3, m, r.months.find(x => x.month === m)?.plan || 0), 0)
                       const gExec = l2rows.reduce((s, r) => s + (r.months.find(x => x.month === m)?.executed || 0), 0)
                       const v = fVar(gPlan > 0 ? (gExec - gPlan) / gPlan : null, 'expense')
-                      const fx = getFx(m)
                       return (
                         <Fragment key={m}>
-                          <td style={{ ...cellStyle(m), background: isCurrent(m) ? 'rgba(249,115,22,0.08)' : 'var(--bg-elevated)' }}>{fM(gPlan, currency, fx)}</td>
-                          <td style={{ ...cellStyle(m), fontWeight: 600, background: isCurrent(m) ? 'rgba(249,115,22,0.08)' : 'var(--bg-elevated)' }}>{fM(gExec, currency, fx)}</td>
+                          <td style={{ ...cellStyle(m), background: isCurrent(m) ? 'rgba(249,115,22,0.08)' : 'var(--bg-elevated)' }}>{fM(gPlan, currency)}</td>
+                          <td style={{ ...cellStyle(m), fontWeight: 600, background: isCurrent(m) ? 'rgba(249,115,22,0.08)' : 'var(--bg-elevated)' }}>{fM(gExec, currency)}</td>
                           <td style={{ ...cellStyle(m), color: v.color, fontWeight: 600, background: isCurrent(m) ? 'rgba(249,115,22,0.08)' : 'var(--bg-elevated)' }}>{v.text}</td>
                         </Fragment>
                       )
                     })}
                     <td style={{ ...totalCell, background: 'var(--bg-elevated)' }}>
-                      {fM(l2rows.reduce((s, r) => s + r.total.executed, 0), currency, avgFxRate)}
+                      {fM(l2rows.reduce((s, r) => s + r.total.executed, 0), currency)}
                     </td>
                   </tr>
                   {isExpanded && l2rows.map(row => (
@@ -773,7 +793,6 @@ export default function CashflowPage() {
                         const plan = getPlanValue(row.level_2, row.level_3, md.month, md.plan)
                         const isModified = `${row.level_2}||${row.level_3 || ''}||${md.month}` in planOverrides
                         const v = fVar(plan > 0 ? (md.executed - plan) / plan : null, 'expense')
-                        const fx = getFx(md.month)
                         return (
                           <Fragment key={md.month}>
                             <td style={{ ...cellStyle(md.month), background: isModified ? 'rgba(249,115,22,0.06)' : cellStyle(md.month).background }}>
@@ -781,16 +800,15 @@ export default function CashflowPage() {
                                 value={plan}
                                 month={md.month}
                                 currency={currency}
-                                fx={fx}
                                 onChange={v => setPlan(row.level_2, row.level_3, md.month, v)}
                               />
                             </td>
-                            <td style={cellStyle(md.month)}>{fM(md.executed, currency, fx)}</td>
+                            <td style={cellStyle(md.month)}>{fM(md.executed, currency)}</td>
                             <td style={{ ...cellStyle(md.month), color: v.color, fontSize: '10px' }}>{v.text}</td>
                           </Fragment>
                         )
                       })}
-                      <td style={totalCell}>{fM(row.total.executed, currency, avgFxRate)}</td>
+                      <td style={totalCell}>{fM(row.total.executed, currency)}</td>
                     </tr>
                   ))}
                 </Fragment>
@@ -807,14 +825,13 @@ export default function CashflowPage() {
                 const plan = ms?.resultadoPlan || 0
                 const exec = ms?.resultadoExec || 0
                 const v = fVar(plan !== 0 ? (exec - plan) / Math.abs(plan) : null, 'income')
-                const fx = getFx(m)
                 return (
                   <Fragment key={m}>
                     <td style={{ ...cellStyle(m), fontWeight: 600, borderTop: '2px solid var(--border-strong)', background: isCurrent(m) ? 'rgba(249,115,22,0.08)' : 'var(--bg-elevated)' }}>
-                      {fM(plan, currency, fx)}
+                      {fM(plan, currency)}
                     </td>
                     <td style={{ ...cellStyle(m), fontWeight: 700, color: exec >= 0 ? 'var(--accent)' : 'var(--text-secondary)', borderTop: '2px solid var(--border-strong)', background: isCurrent(m) ? 'rgba(249,115,22,0.08)' : 'var(--bg-elevated)' }}>
-                      {fM(exec, currency, fx)}
+                      {fM(exec, currency)}
                     </td>
                     <td style={{ ...cellStyle(m), color: v.color, fontWeight: 600, borderTop: '2px solid var(--border-strong)', background: isCurrent(m) ? 'rgba(249,115,22,0.08)' : 'var(--bg-elevated)' }}>
                       {v.text}
@@ -823,7 +840,7 @@ export default function CashflowPage() {
                 )
               })}
               <td style={{ ...totalCell, background: 'var(--bg-elevated)', borderTop: '2px solid var(--border-strong)' }}>
-                {fM(computedSummary.reduce((s, m) => s + m.resultadoExec, 0), currency, avgFxRate)}
+                {fM(computedSummary.reduce((s, m) => s + m.resultadoExec, 0), currency)}
               </td>
             </tr>
 
@@ -834,14 +851,13 @@ export default function CashflowPage() {
                 const ms = computedSummary.find(s => s.month === m)
                 const plan = ms?.balancePlan || 0
                 const exec = ms?.balanceEffective ?? ms?.balanceExec ?? 0
-                const fx = getFx(m)
                 return (
                   <Fragment key={m}>
                     <td style={{ ...cellStyle(m), fontWeight: 600, background: isCurrent(m) ? 'rgba(249,115,22,0.08)' : 'var(--bg-surface)' }}>
-                      {fM(plan, currency, fx)}
+                      {fM(plan, currency)}
                     </td>
                     <td style={{ ...cellStyle(m), fontWeight: 800, fontSize: '12px', background: isCurrent(m) ? 'rgba(249,115,22,0.08)' : 'var(--bg-surface)' }}>
-                      {fM(exec, currency, fx)}
+                      {fM(exec, currency)}
                     </td>
                     <td style={{ ...cellStyle(m), background: isCurrent(m) ? 'rgba(249,115,22,0.08)' : 'var(--bg-surface)' }}>—</td>
                   </Fragment>

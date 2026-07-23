@@ -166,7 +166,7 @@ export default function FxRatesPage() {
             FX Rates
           </h1>
           <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
-            Daily USD/COP · Auto-fetched on startup · Historical via Frankfurter
+            Daily USD/COP · Auto-fetched daily · Historical via Frankfurter
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>

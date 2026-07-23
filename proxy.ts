@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login']
+// `/api/fx-rates/cron` is hit by Vercel Cron (no session cookie); it guards
+// itself with CRON_SECRET, so let it through the auth check here.
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/fx-rates/cron']
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl

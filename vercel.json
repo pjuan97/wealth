@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/fx-rates/cron", "schedule": "0 11 * * *" }
+  ]
+}

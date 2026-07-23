@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// A single LLM extraction (statement images + up to 16k tokens back) routinely
+// takes 20-60s. Raise the serverless timeout from the platform default (10s on
+// Vercel Hobby) to the max Hobby allows so real statements don't time out.
+export const maxDuration = 60
+
 // Account import config (from AccountDef via /api/ai-import/accounts)
 interface AccountImportConfig {
   name: string

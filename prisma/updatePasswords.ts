@@ -24,8 +24,8 @@ async function main() {
       'Set JUAN_NEW_PASSWORD and DANI_NEW_PASSWORD env vars before running this script.'
     )
   }
-  if (juanPassword.length < 12 || daniPassword.length < 12) {
-    throw new Error('Both passwords must be at least 12 characters.')
+  if (juanPassword.length < 11 || daniPassword.length < 11) {
+    throw new Error('Both passwords must be at least 11 characters.')
   }
 
   const [juanHash, daniHash] = await Promise.all([

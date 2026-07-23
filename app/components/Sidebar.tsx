@@ -95,6 +95,11 @@ const NAV_ITEMS = [
     label: 'Data Source',
     icon: <span style={{ fontSize: '14px' }}>&#9881;</span>,
   },
+  {
+    href: '/ayuda',
+    label: 'Ayuda',
+    icon: <span style={{ fontSize: '14px' }}>&#63;</span>,
+  },
 ]
 
 export default function Sidebar() {

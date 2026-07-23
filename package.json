@@ -2,11 +2,15 @@
   "name": "wealth",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "postinstall": "prisma generate",
     "db:seed": "npx tsx --env-file=.env prisma/seed.ts"
   },
   "dependencies": {

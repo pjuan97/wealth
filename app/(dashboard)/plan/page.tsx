@@ -427,7 +427,7 @@ function AddPlanItemModal({
                 {months.size === MONTHS.length ? 'Clear all' : 'Select all'}
               </button>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+            <div className="g-months" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
               {MONTHS.map(m => (
                 <label
                   key={m.key}
@@ -864,11 +864,9 @@ export default function PlanPage() {
 
           {/* Summary cards — COP and USD rows merged into the display currency */}
           {totals && (
-            <div style={{
+            <div className="g-4" style={{
               padding: '16px 32px',
               borderBottom: '1px solid var(--border)',
-              display: 'grid',
-              gridTemplateColumns: 'repeat(4, 1fr)',
               gap: '12px',
               flexShrink: 0,
             }}>

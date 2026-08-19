@@ -1221,7 +1221,7 @@ export default function TransactionsPage() {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 1000, padding: '24px',
         }}>
-          <div style={{
+          <div className="modal-box" style={{
             background: 'var(--bg-surface)',
             border: '1px solid var(--border-strong)',
             borderRadius: '16px',

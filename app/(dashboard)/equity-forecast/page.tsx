@@ -485,11 +485,9 @@ export default function EquityForecastPage() {
 
           {/* Summary cards */}
           {totals && (
-            <div style={{
+            <div className="g-4" style={{
               padding: '16px 32px',
               borderBottom: '1px solid var(--border)',
-              display: 'grid',
-              gridTemplateColumns: 'repeat(4, 1fr)',
               gap: '12px', flexShrink: 0,
             }}>
               {[

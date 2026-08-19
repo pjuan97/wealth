@@ -106,12 +106,22 @@ html, body {
   }
 
   /* A chart and its companion table stack instead of splitting an already
-     narrow screen; KPI rows wrap to 2 across rather than running off-screen. */
+     narrow screen; KPI rows wrap to 2 across rather than running off-screen.
+     !important because a few callers also set an inline gridTemplateColumns
+     (e.g. TransactionForm's from/to row, whose column count depends on which
+     fields are visible) — without it, that inline value would always win
+     over this class regardless of viewport, since a class selector never
+     outranks an inline style on its own. */
   .g-main-side,
   .g-2,
-  .g-3 { grid-template-columns: 1fr; }
+  .g-3 { grid-template-columns: 1fr !important; }
   .g-4,
-  .g-5 { grid-template-columns: repeat(2, 1fr); }
+  .g-5 { grid-template-columns: repeat(2, 1fr) !important; }
+  /* The "Add Plan Item" month picker: full month names need more room per
+     cell than a 3-across grid gives in a ~340px modal, so mobile gets 2
+     across instead of collapsing all the way to 1 (which would make a
+     12-item checkbox grid needlessly tall). */
+  .g-months { grid-template-columns: repeat(2, 1fr) !important; }
 
   /* Page chrome is tighter on a phone — 32px side padding wasted ~17% of a
      375px screen. */

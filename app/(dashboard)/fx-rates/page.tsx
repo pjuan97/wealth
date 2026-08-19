@@ -150,15 +150,13 @@ export default function FxRatesPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}>
 
       {/* Header */}
-      <div style={{
+      <div className="header-row page-header" style={{
         padding: '24px 32px',
         borderBottom: '1px solid var(--border)',
-        display: 'flex',
         alignItems: 'flex-start',
-        justifyContent: 'space-between',
         flexShrink: 0,
       }}>
         <div>
@@ -195,11 +193,11 @@ export default function FxRatesPage() {
         </div>
       </div>
 
-      <div style={{ padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div className="page-body" style={{ padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
         {/* Stats cards */}
         {todayRate !== null && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '16px' }}>
+          <div className="g-4" style={{ gap: '16px' }}>
             {[
               { label: "Today's TRM", value: formatCOP(todayRate), sub: 'COP per 1 USD' },
               { label: '30-Day Average', value: formatCOP(avgRate), sub: 'COP per 1 USD' },

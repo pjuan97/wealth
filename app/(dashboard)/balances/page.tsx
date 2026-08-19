@@ -186,7 +186,7 @@ export default function BalancesPage() {
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', overflowY: 'auto' }}>
 
       {/* Header */}
-      <div style={{
+      <div className="page-header" style={{
         padding: '24px 32px',
         borderBottom: '1px solid var(--border)',
         flexShrink: 0,
@@ -199,10 +199,10 @@ export default function BalancesPage() {
         </p>
       </div>
 
-      <div style={{ padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div className="page-body" style={{ padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
         {/* Hero cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
+        <div className="g-3" style={{ gap: '16px' }}>
           {[
             { label: 'Net Worth', cop: data.netWorth, usd: data.netWorthUsd, primary: true },
             { label: 'Total Assets', cop: data.totalAssets, usd: data.totalAssetsUsd, primary: false },
@@ -380,7 +380,7 @@ export default function BalancesPage() {
         </div>
 
         {/* Accounts grid — side by side, expands to fill space */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+        <div className="g-2" style={{ gap: '16px' }}>
 
           {/* Assets */}
           <div style={{
@@ -419,10 +419,10 @@ export default function BalancesPage() {
                   padding: '14px 20px',
                   borderBottom: i < assets.length - 1 ? '1px solid var(--border)' : 'none',
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '18px' }}>{getAccountIcon(a.name, a.type)}</span>
-                    <div>
-                      <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
+                    <span style={{ fontSize: '18px', flexShrink: 0 }}>{getAccountIcon(a.name, a.type)}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {a.name}
                       </p>
                       <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px', fontVariantNumeric: 'tabular-nums' }}>
@@ -430,7 +430,7 @@ export default function BalancesPage() {
                       </p>
                     </div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
+                  <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: '10px' }}>
                     <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                       {fmtPrimary(primary(a.balance, a.balanceUsd))}
                     </p>
@@ -486,10 +486,10 @@ export default function BalancesPage() {
                   padding: '14px 20px',
                   borderBottom: i < liabilities.length - 1 ? '1px solid var(--border)' : 'none',
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '18px' }}>{getAccountIcon(a.name, a.type)}</span>
-                    <div>
-                      <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
+                    <span style={{ fontSize: '18px', flexShrink: 0 }}>{getAccountIcon(a.name, a.type)}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {a.name}
                       </p>
                       <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px', fontVariantNumeric: 'tabular-nums' }}>
@@ -497,7 +497,7 @@ export default function BalancesPage() {
                       </p>
                     </div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
+                  <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: '10px' }}>
                     <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
                       {fmtPrimary(primary(Math.abs(a.balance), Math.abs(a.balanceUsd)))}
                     </p>

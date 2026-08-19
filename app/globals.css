@@ -71,6 +71,15 @@ html, body {
 .desktop-only { display: flex; }
 .mobile-only { display: none; }
 
+/* Grid utilities: desktop keeps the multi-column layout, phone collapses so
+   nothing is cut off at the right edge. Replaces inline gridTemplateColumns,
+   which cannot carry a media query. */
+.g-main-side { display: grid; grid-template-columns: 2fr 1fr; }
+.g-2         { display: grid; grid-template-columns: 1fr 1fr; }
+.g-3         { display: grid; grid-template-columns: repeat(3, 1fr); }
+.g-4         { display: grid; grid-template-columns: repeat(4, 1fr); }
+.g-5         { display: grid; grid-template-columns: repeat(5, 1fr); }
+
 @media (max-width: 767px) {
   .desktop-only { display: none; }
   .mobile-only { display: flex; }
@@ -80,4 +89,26 @@ html, body {
   .app-main {
     padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
   }
+
+  /* A chart and its companion table stack instead of splitting an already
+     narrow screen; KPI rows wrap to 2 across rather than running off-screen. */
+  .g-main-side,
+  .g-2,
+  .g-3 { grid-template-columns: 1fr; }
+  .g-4,
+  .g-5 { grid-template-columns: repeat(2, 1fr); }
+
+  /* Page chrome is tighter on a phone — 32px side padding wasted ~17% of a
+     375px screen. */
+  .page-header { padding: 16px 16px 0 !important; }
+  .page-body   { padding: 16px !important; gap: 14px !important; }
+
+  /* Reclaim the card's inner padding and tighten table cells so a 5-column
+     summary fits the screen instead of being clipped. Wider tables still
+     scroll sideways inside their own card, which is the right trade for a
+     comparison grid — but they now start from a much narrower baseline. */
+  .card-body { padding: 12px !important; }
+  .mini-table { font-size: 10px !important; }
+  .mini-table th,
+  .mini-table td { padding: 6px 5px !important; }
 }

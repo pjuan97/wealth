@@ -1359,7 +1359,7 @@ export default function TransactionsPage() {
             border: '1px solid var(--border-strong)',
             borderRadius: '16px',
             width: '100%', maxWidth: '900px',
-            maxHeight: '85vh',
+            maxHeight: '85dvh',
             display: 'flex', flexDirection: 'column',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           }}>

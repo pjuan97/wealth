@@ -316,9 +316,9 @@ function AddPlanItemModal({
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '24px',
     }}>
-      <div style={{
+      <div className="modal-box" style={{
         background: 'var(--bg-surface)', border: '1px solid var(--border-strong)',
-        borderRadius: '16px', width: '480px', maxHeight: '85vh', overflowY: 'auto',
+        borderRadius: '16px', width: '480px', maxHeight: '85dvh', overflowY: 'auto',
         boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
       }}>
         <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>

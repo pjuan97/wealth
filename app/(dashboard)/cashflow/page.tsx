@@ -120,7 +120,7 @@ function AccountSelectorModal({
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
     }}>
-      <div style={{
+      <div className="modal-box" style={{
         background: 'var(--bg-surface)', border: '1px solid var(--border-strong)',
         borderRadius: '14px', padding: '28px 32px', width: '400px',
         boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
@@ -191,7 +191,7 @@ function SaveChangesModal({
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
     }}>
-      <div style={{
+      <div className="modal-box" style={{
         background: 'var(--bg-surface)', border: '1px solid var(--border-strong)',
         borderRadius: '14px', padding: '28px 32px', width: '420px',
         boxShadow: '0 24px 80px rgba(0,0,0,0.5)',

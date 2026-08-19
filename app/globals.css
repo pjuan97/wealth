@@ -141,4 +141,17 @@ html, body {
   .header-row { flex-wrap: wrap; gap: 10px; }
   .header-row > *:first-child { width: 100%; }
   .header-row-actions { flex-wrap: wrap; }
+
+  /* Every modal/dialog in the app sets a fixed pixel width (400-520px) for
+     desktop — centered ones would overflow both edges equally on a 375px
+     screen (clipped by the page-wide overflow-x:hidden, so genuinely
+     unreachable, not just tight); TransactionForm's right-anchored drawer
+     would lose its entire left column off-screen instead. */
+  .modal-box {
+    width: calc(100% - 32px) !important;
+    max-width: 440px;
+  }
+  .slide-panel {
+    width: 100% !important;
+  }
 }

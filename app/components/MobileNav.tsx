@@ -127,7 +127,7 @@ export default function MobileNav() {
             onClick={e => e.stopPropagation()}
             style={{
               width: '100%',
-              maxHeight: '85vh',
+              maxHeight: '85dvh',
               overflowY: 'auto',
               background: 'var(--bg-surface)',
               borderTopLeftRadius: '18px',

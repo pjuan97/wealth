@@ -21,7 +21,7 @@ export default function ConfirmDialog({
         onClick={onCancel}
       />
       <div
-        className="fixed z-50 rounded-xl shadow-2xl"
+        className="modal-box fixed z-50 rounded-xl shadow-2xl"
         style={{
           top: '50%',
           left: '50%',

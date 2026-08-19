@@ -138,7 +138,7 @@ export default function BalancesPage() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100dvh' }}>
         <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Computing balances…</span>
       </div>
     )
@@ -183,7 +183,7 @@ export default function BalancesPage() {
   const changePositive = netWorthChange >= 0
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', overflowY: 'auto' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', overflowY: 'auto' }}>
 
       {/* Header */}
       <div className="page-header" style={{

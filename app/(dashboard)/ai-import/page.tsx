@@ -754,7 +754,7 @@ export default function AIImportPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
 
       {/* Hidden file input */}
       <input
@@ -934,10 +934,12 @@ export default function AIImportPage() {
           Upload bank statement screenshots &rarr; AI extracts transactions &rarr; Review &amp; approve
         </p>
 
-        {/* Step indicator */}
-        <div style={{ display: 'flex', gap: '4px', marginTop: '16px' }}>
+        {/* Step indicator — a 5-step arrow chain doesn't wrap cleanly onto
+            multiple lines, so on a narrow screen it scrolls as its own
+            contained strip instead (same pattern as the month tabs). */}
+        <div style={{ display: 'flex', gap: '4px', marginTop: '16px', overflowX: 'auto' }}>
           {(['upload', 'apikey', 'analyzing', 'review', 'done'] as Step[]).map((s, i) => (
-            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
               <div style={{
                 width: '24px', height: '24px',
                 borderRadius: '50%',
@@ -964,7 +966,7 @@ export default function AIImportPage() {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
+      <div className="page-body" style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
 
         {/* ── STEP 1: ACCOUNT & UPLOAD ────────────────────────────────────── */}
         {step === 'upload' && (
@@ -1531,7 +1533,7 @@ export default function AIImportPage() {
               border: '1px solid var(--border)',
               borderRadius: '14px',
               overflow: 'hidden',
-              maxHeight: 'calc(100vh - 340px)',
+              maxHeight: 'calc(100dvh - 340px)',
               overflowY: 'auto',
               overflowX: 'auto',
             }}>

@@ -98,10 +98,11 @@ html, body {
   .desktop-only { display: none; }
   .mobile-only { display: flex; }
 
-  /* Leave room for the fixed bottom tab bar (plus the iPhone home indicator)
-     so the last row of content is never trapped underneath it. */
+  /* Leave room for the fixed bottom tab bar (60px) plus a little breathing
+     room (16px) so the last row of content sits clearly above it rather than
+     flush against its edge, plus the iPhone home indicator. */
   .app-main {
-    padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   }
 
   /* A chart and its companion table stack instead of splitting an already
@@ -115,7 +116,16 @@ html, body {
   /* Page chrome is tighter on a phone — 32px side padding wasted ~17% of a
      375px screen. */
   .page-header { padding: 16px 16px 0 !important; }
-  .page-body   { padding: 16px !important; gap: 14px !important; }
+  /* Most pages define their own `height: 100dvh` column with an inner
+     `flex:1, overflowY:'auto'` region instead of relying on layout's
+     .app-main — so .app-main's own bottom padding never reaches them, and
+     their last row of content (e.g. AI Import's "Continue" button) ends up
+     physically hidden behind the fixed bottom tab bar. Every such region
+     gets this same clearance via .page-body. */
+  .page-body {
+    padding: 16px 16px calc(76px + env(safe-area-inset-bottom, 0px)) 16px !important;
+    gap: 14px !important;
+  }
 
   /* Reclaim the card's inner padding and tighten table cells so a 5-column
      summary fits the screen instead of being clipped. Wider tables still

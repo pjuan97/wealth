@@ -417,7 +417,7 @@ export default function EquityForecastPage() {
   const monthLabel = (MONTHS.find(m => m.key === selectedMonth)?.label || '') + ' 2026'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
 
       {/* Header */}
       <div style={{
@@ -510,7 +510,7 @@ export default function EquityForecastPage() {
           )}
 
           {/* Table */}
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="page-body" style={{ flex: 1, overflowY: 'auto' }}>
             {loadingMonthly ? (
               <div style={{ padding: '60px', textAlign: 'center' }}>
                 <p style={{ color: 'var(--text-primary)', fontSize: '13px' }}>Loading…</p>
@@ -674,7 +674,7 @@ export default function EquityForecastPage() {
 
       {/* ── ANNUAL TAB ────────────────────────────────────────────────────── */}
       {tab === 'annual' && (
-        <div style={{ flex: 1, overflowY: 'auto' }}>
+        <div className="page-body" style={{ flex: 1, overflowY: 'auto' }}>
           {loadingAnnual ? (
             <div style={{ padding: '60px', textAlign: 'center' }}>
               <p style={{ color: 'var(--text-primary)', fontSize: '13px' }}>Loading…</p>

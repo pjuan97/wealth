@@ -533,18 +533,18 @@ export default function CashflowPage() {
   }
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100dvh' }}>
       <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Loading cashflow…</p>
     </div>
   )
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
 
       {/* Header */}
-      <div style={{
+      <div className="header-row" style={{
         padding: '20px 32px 16px', borderBottom: '1px solid var(--border)',
-        flexShrink: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+        flexShrink: 0, alignItems: 'flex-start',
       }}>
         <div>
           <h1 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)' }}>
@@ -554,7 +554,7 @@ export default function CashflowPage() {
             Plan vs Ejecutado · 2026 · Rolling Opening Balance
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div className="header-row-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
 
           {/* Unsaved indicator */}
           {hasUnsavedChanges && (
@@ -616,7 +616,7 @@ export default function CashflowPage() {
       )}
 
       {/* Table */}
-      <div style={{ flex: 1, overflow: 'auto' }}>
+      <div className="page-body" style={{ flex: 1, overflow: 'auto' }}>
         <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
           <thead>
             {/* Month headers */}

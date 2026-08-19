@@ -720,7 +720,7 @@ export default function PlanPage() {
     toDisplay(row.COP[field], 'COP', row.month) + toDisplay(row.USD[field], 'USD', row.month)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
 
       {/* Hidden CSV file input */}
       <input
@@ -890,7 +890,7 @@ export default function PlanPage() {
           )}
 
           {/* Table */}
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="page-body" style={{ flex: 1, overflowY: 'auto' }}>
             {loadingMonthly ? (
               <div style={{ padding: '60px', textAlign: 'center' }}>
                 <p style={{ color: 'var(--text-primary)', fontSize: '13px' }}>Loading…</p>
@@ -1090,7 +1090,7 @@ export default function PlanPage() {
 
       {/* ── ANNUAL TAB ────────────────────────────────────────────────────── */}
       {tab === 'annual' && (
-        <div style={{ flex: 1, overflowY: 'auto' }}>
+        <div className="page-body" style={{ flex: 1, overflowY: 'auto' }}>
           {loadingAnnual ? (
             <div style={{ padding: '60px', textAlign: 'center' }}>
               <p style={{ color: 'var(--text-primary)', fontSize: '13px' }}>Loading…</p>

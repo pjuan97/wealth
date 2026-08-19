@@ -492,7 +492,7 @@ export default function DataSourcePage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
 
       {/* Header */}
       <div style={{
@@ -500,10 +500,7 @@ export default function DataSourcePage() {
         borderBottom: '1px solid var(--border)',
         flexShrink: 0,
       }}>
-        <div style={{
-          display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', marginBottom: '16px',
-        }}>
+        <div className="header-row" style={{ marginBottom: '16px' }}>
           <div>
             <h1 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)' }}>
               Data Source
@@ -734,7 +731,7 @@ export default function DataSourcePage() {
         </div>
       )}
 
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div className="page-body" style={{ flex: 1, overflowY: 'auto' }}>
 
         {showAdd && (
           <div style={{

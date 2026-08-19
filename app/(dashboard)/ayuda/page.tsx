@@ -43,7 +43,7 @@ function ModuleRow({ name, desc }: { name: string; desc: string }) {
 
 export default function AyudaPage() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
       <div style={{ padding: '20px 32px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
         <h1 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)' }}>
           Ayuda
@@ -53,7 +53,7 @@ export default function AyudaPage() {
         </p>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', maxWidth: '780px' }}>
+      <div className="page-body" style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', maxWidth: '780px' }}>
 
         <Section title="¿Qué es Wealth?">
           Es una app privada (solo para ustedes dos) para llevar el control de sus finanzas

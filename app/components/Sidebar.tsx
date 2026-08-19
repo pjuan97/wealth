@@ -5,103 +5,11 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import ThemeToggle from './ThemeToggle'
 import { useCurrencyPreference } from './CurrencyPreferenceProvider'
+import { NAV_ITEMS, isNavItemActive } from './navItems'
 
-const NAV_ITEMS = [
-  {
-    href: '/dashboard',
-    label: 'Dashboard',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="7" height="7" rx="1"/>
-        <rect x="14" y="3" width="7" height="7" rx="1"/>
-        <rect x="3" y="14" width="7" height="7" rx="1"/>
-        <rect x="14" y="14" width="7" height="7" rx="1"/>
-      </svg>
-    ),
-  },
-  {
-    href: '/transactions',
-    label: 'Transactions',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-      </svg>
-    ),
-  },
-  {
-    href: '/ai-import',
-    label: 'AI Import',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
-        <path d="M16 14H8a4 4 0 0 0-4 4v2h16v-2a4 4 0 0 0-4-4z"/>
-        <path d="M9 10l3 3 3-3"/>
-      </svg>
-    ),
-  },
-  {
-    href: '/balances',
-    label: 'Balances',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-        <path d="M2 17l10 5 10-5"/>
-        <path d="M2 12l10 5 10-5"/>
-      </svg>
-    ),
-  },
-  {
-    href: '/plan',
-    label: 'Plan vs Real',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 3v18h18"/>
-        <path d="M7 16l4-4 4 4 4-4"/>
-      </svg>
-    ),
-  },
-  {
-    href: '/cashflow',
-    label: 'Cashflow',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M17 1l4 4-4 4"/>
-        <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
-        <path d="M7 23l-4-4 4-4"/>
-        <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-      </svg>
-    ),
-  },
-  {
-    href: '/equity-forecast',
-    label: 'Equity',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-      </svg>
-    ),
-  },
-  {
-    href: '/fx-rates',
-    label: 'FX Rates',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-      </svg>
-    ),
-  },
-  {
-    href: '/data-source',
-    label: 'Data Source',
-    icon: <span style={{ fontSize: '14px' }}>&#9881;</span>,
-  },
-  {
-    href: '/ayuda',
-    label: 'Ayuda',
-    icon: <span style={{ fontSize: '14px' }}>&#63;</span>,
-  },
-]
-
+// Desktop / tablet navigation. On phones this is hidden by the `desktop-only`
+// class and MobileNav's bottom tab bar takes over — at 375px this 160px rail
+// was eating 43% of the screen.
 export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
@@ -123,13 +31,13 @@ export default function Sidebar() {
 
   return (
     <aside
+      className="desktop-only"
       style={{
         width: '160px',
         minWidth: '160px',
-        height: '100vh',
+        height: '100dvh',
         position: 'sticky',
         top: 0,
-        display: 'flex',
         flexDirection: 'column',
         background: 'var(--bg-surface)',
         borderRight: '1px solid var(--border)',
@@ -152,9 +60,7 @@ export default function Sidebar() {
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
         {NAV_ITEMS.map((item) => {
-          const isActive =
-            pathname === item.href ||
-            (item.href !== '/dashboard' && pathname.startsWith(item.href))
+          const isActive = isNavItemActive(item.href, pathname)
 
           return (
             <Link

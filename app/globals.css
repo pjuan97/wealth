@@ -61,3 +61,23 @@ html, body {
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: var(--bg-surface); }
 ::-webkit-scrollbar-thumb { background: var(--bg-elevated); border-radius: 2px; }
+
+/* ─── Responsive ──────────────────────────────────────────────────────────────
+   Phone is the only breakpoint that needs a different shell: at 375px the
+   160px sidebar ate 43% of the screen. Tablet (768px+) keeps the desktop
+   layout, which already holds up there.
+   Show/hide is done in CSS rather than JS so there's no flash of the wrong
+   navigation on first paint, and no server/client hydration mismatch. */
+.desktop-only { display: flex; }
+.mobile-only { display: none; }
+
+@media (max-width: 767px) {
+  .desktop-only { display: none; }
+  .mobile-only { display: flex; }
+
+  /* Leave room for the fixed bottom tab bar (plus the iPhone home indicator)
+     so the last row of content is never trapped underneath it. */
+  .app-main {
+    padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+  }
+}

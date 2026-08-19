@@ -478,25 +478,31 @@ export default function CashflowPage() {
   // ── Column styles ──────────────────────────────────────────────────────────
   const COL_W = '90px'
 
+  // Rows here are transparent/bg-base by default, so a sticky header sharing
+  // that same color had no visible seam from content scrolling underneath —
+  // it read as "floating and blending in" rather than clearly pinned.
+  // bg-elevated + a shadow anchor it as visually distinct.
   const monthHeaderStyle = (m: string): React.CSSProperties => ({
     padding: '6px 0', fontSize: '10px',
     fontWeight: isCurrent(m) ? 800 : 600,
     color: isCurrent(m) ? 'var(--accent)' : isFuture(m) ? 'var(--text-muted)' : 'var(--text-secondary)',
     textAlign: 'center',
-    borderBottom: '1px solid var(--border)',
-    background: isCurrent(m) ? 'var(--accent-subtle)' : 'var(--bg-base)',
+    borderBottom: '1px solid var(--border-strong)',
+    background: isCurrent(m) ? 'var(--accent-subtle)' : 'var(--bg-elevated)',
     position: 'sticky', top: 0, zIndex: 10, whiteSpace: 'nowrap',
     borderLeft: isCurrent(m) ? '1px solid var(--accent-border)' : 'none',
+    boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
   })
 
   const subHeaderStyle = (m: string): React.CSSProperties => ({
     padding: '4px 6px', fontSize: '9px', fontWeight: 600,
     color: isCurrent(m) ? 'var(--accent)' : 'var(--text-muted)',
     textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.04em',
-    borderBottom: '1px solid var(--border)',
-    background: isCurrent(m) ? 'var(--accent-subtle)' : 'var(--bg-base)',
+    borderBottom: '1px solid var(--border-strong)',
+    background: isCurrent(m) ? 'var(--accent-subtle)' : 'var(--bg-elevated)',
     position: 'sticky', top: '28px', zIndex: 9,
     width: COL_W, minWidth: COL_W, maxWidth: COL_W,
+    boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
   })
 
   const cellStyle = (m: string): React.CSSProperties => ({
@@ -617,15 +623,16 @@ export default function CashflowPage() {
 
       {/* Table */}
       <div className="page-body" style={{ flex: 1, overflow: 'auto' }}>
-        <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+        <table style={{ borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed' }}>
           <thead>
             {/* Month headers */}
             <tr>
               <th style={{
                 ...stickyLabel(0), position: 'sticky', left: 0, top: 0, zIndex: 20,
-                background: 'var(--bg-base)', borderBottom: '1px solid var(--border)',
+                background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border-strong)',
                 fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
                 textTransform: 'uppercase', letterSpacing: '0.05em',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
               }}>CATEGORY</th>
               {MONTHS.map(m => (
                 <th key={m} colSpan={3} style={monthHeaderStyle(m)}>

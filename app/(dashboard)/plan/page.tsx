@@ -693,9 +693,15 @@ export default function PlanPage() {
     textAlign: align,
     position: 'sticky',
     top: 0,
-    background: 'var(--bg-base)',
+    // Rows are transparent over the page's own bg-base, so a sticky header
+    // using that same color had no visible seam from the content scrolling
+    // under it — during a scroll it read as "floating and blending in"
+    // rather than clearly pinned. bg-elevated + a shadow make the frozen
+    // header visually distinct from the scrolling rows.
+    background: 'var(--bg-elevated)',
     zIndex: 10,
-    borderBottom: '1px solid var(--border)',
+    borderBottom: '1px solid var(--border-strong)',
+    boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
     whiteSpace: 'nowrap',
   })
 
@@ -896,7 +902,7 @@ export default function PlanPage() {
                 <p style={{ color: 'var(--text-primary)', fontSize: '13px' }}>Loading…</p>
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
+              <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: '700px' }}>
                 <thead>
                   <tr>
                     <th style={{ ...thStyle('left'), paddingLeft: '32px', width: '280px' }}>Category</th>
@@ -1114,7 +1120,7 @@ export default function PlanPage() {
                   </p>
                 </div>
                 <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: '900px' }}>
                     <thead>
                       <tr style={{ borderBottom: '1px solid var(--border)' }}>
                         <th style={{ ...thStyle('left'), paddingLeft: '20px', width: '130px' }}>Metric</th>
@@ -1236,7 +1242,7 @@ export default function PlanPage() {
                   </div>
                 </div>
                 <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: '900px' }}>
                     <thead>
                       <tr style={{ borderBottom: '1px solid var(--border)' }}>
                         <th style={{ ...thStyle('left'), paddingLeft: '20px', width: '200px' }}>Category</th>

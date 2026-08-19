@@ -471,11 +471,12 @@ export default function DataSourcePage() {
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
     textAlign: 'left',
-    borderBottom: '1px solid var(--border)',
-    background: 'var(--bg-base)',
+    borderBottom: '1px solid var(--border-strong)',
+    background: 'var(--bg-elevated)',
     position: 'sticky',
     top: 0,
     zIndex: 10,
+    boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
   }
 
   const tdStyle: React.CSSProperties = {
@@ -842,7 +843,7 @@ export default function DataSourcePage() {
             <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Loading\u2026</p>
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
 
             {tab === 'accounts' && (
               <>

@@ -210,7 +210,7 @@ function MiniTable({ headers, rows }: {
 }) {
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table className="mini-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+      <table className="mini-table" style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: '11px' }}>
         <thead>
           <tr>
             {headers.map((h, i) => (

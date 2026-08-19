@@ -379,7 +379,7 @@ export default function FxRatesPage() {
               </p>
             </div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
                   {['Date', 'USD → COP', 'COP → USD', 'Source', 'Fetched At'].map((h, i) => (
@@ -449,7 +449,7 @@ export default function FxRatesPage() {
                 Used for historical seed data (Jan–Apr 2026)
               </p>
             </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
                   {['Month', 'USD → COP', 'Currency'].map((h, i) => (

@@ -1537,7 +1537,7 @@ export default function AIImportPage() {
               overflowY: 'auto',
               overflowX: 'auto',
             }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+                <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: '900px' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg-base)' }}>
                       <th style={{

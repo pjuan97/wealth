@@ -56,6 +56,14 @@ html, body {
   height: 100%;
   background: var(--bg-base);
   color: var(--text-primary);
+  /* The screen itself never pans sideways — like a native app, the frame is
+     fixed and only specific inner strips (a data table, a month tab bar)
+     scroll horizontally, each visibly contained in its own box. Without this,
+     setting overflow-y on a container makes its overflow-x compute to `auto`
+     too (per spec), so any content wider than the screen turned the WHOLE
+     page into a horizontal carousel — which is what made "+ New Transaction"
+     require dragging the screen sideways to reach. */
+  overflow-x: hidden;
 }
 
 ::-webkit-scrollbar { width: 4px; }
@@ -70,6 +78,12 @@ html, body {
    navigation on first paint, and no server/client hydration mismatch. */
 .desktop-only { display: flex; }
 .mobile-only { display: none; }
+
+/* A page header is usually "title on the left, action buttons on the right,
+   never wrapping" — fine on a wide screen, but on a phone the buttons alone
+   are wider than the screen. This class doesn't change desktop at all; the
+   phone override below is what makes it wrap. */
+.header-row { display: flex; align-items: center; justify-content: space-between; }
 
 /* Grid utilities: desktop keeps the multi-column layout, phone collapses so
    nothing is cut off at the right edge. Replaces inline gridTemplateColumns,
@@ -111,4 +125,10 @@ html, body {
   .mini-table { font-size: 10px !important; }
   .mini-table th,
   .mini-table td { padding: 6px 5px !important; }
+
+  /* Title stays full-width on its own line; buttons wrap onto as many rows
+     as they need instead of running off the right edge. */
+  .header-row { flex-wrap: wrap; gap: 10px; }
+  .header-row > *:first-child { width: 100%; }
+  .header-row-actions { flex-wrap: wrap; }
 }

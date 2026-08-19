@@ -749,7 +749,7 @@ export default function PlanPage() {
         borderBottom: '1px solid var(--border)',
         flexShrink: 0,
       }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '16px' }}>
+        <div className="header-row" style={{ alignItems: 'flex-start', marginBottom: '16px' }}>
           <div>
             <h1 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)' }}>
               Plan vs Real
@@ -758,7 +758,7 @@ export default function PlanPage() {
               {tab === 'monthly' ? monthLabel : 'Full year 2026'}
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div className="header-row-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <button
               onClick={exportCSV}
               style={{

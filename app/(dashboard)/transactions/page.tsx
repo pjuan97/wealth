@@ -611,12 +611,7 @@ export default function TransactionsPage() {
         borderBottom: '1px solid var(--border)',
         flexShrink: 0,
       }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '12px',
-        }}>
+        <div className="header-row" style={{ marginBottom: '12px' }}>
           <div>
             <h1 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)' }}>
               Transactions
@@ -625,7 +620,7 @@ export default function TransactionsPage() {
               {monthLabel}
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div className="header-row-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <input
               ref={csvInputRef}
               type="file"
@@ -746,9 +741,7 @@ export default function TransactionsPage() {
       </div>
 
       {/* Summary bar */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr 1fr 1fr',
+      <div className="g-4" style={{
         gap: '0',
         borderBottom: '1px solid var(--border)',
         flexShrink: 0,

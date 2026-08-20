@@ -7,6 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import { useCurrencyPreference } from '@/app/components/CurrencyPreferenceProvider'
+import { useIsMobile } from '@/app/components/useIsMobile'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Currency = 'COP' | 'USD'
@@ -618,6 +619,7 @@ function PlanTab() {
 // ─── MONTHLY DETAIL TAB ──────────────────────────────────────────────────────
 function MonthlyDetailTab() {
   const { displayCurrency, convert } = useCurrencyPreference()
+  const isMobile = useIsMobile()
   const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH)
   const [data, setData] = useState<{
     rows: MonthlyRow[]
@@ -702,7 +704,55 @@ function MonthlyDetailTab() {
               />
             </Card>
 
-            {/* Horizontal bar chart — Plan vs Executed per subcategory */}
+            {/* On a phone the horizontal bar chart is unreadable: the category
+                labels alone claim 120px of a ~340px card, leaving the bars a
+                sliver, and one row per subcategory makes it extremely tall.
+                Plan-vs-Executed per row is already in the table beside it, so
+                the chart's job here is the visual "where did the money go" —
+                which a donut of executed spend answers legibly at this size. */}
+            {isMobile ? (
+              <Card title="Executed by Category" subtitle={`${MONTH_LABELS[selectedMonth]} · share of spend`}>
+                {expensePie.length === 0 ? (
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center', padding: '32px 0' }}>
+                    No expenses recorded for this month
+                  </p>
+                ) : (
+                  /* Plain CSS bars rather than a Recharts donut: Pie renders
+                     nothing in this app (see the equally blank "Expense
+                     Distribution YTD" chart), while these are guaranteed to
+                     draw and read better in a narrow column anyway. Sorted
+                     biggest-first so the top of the list answers "where did
+                     most of the money go". */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
+                    {[...expensePie].sort((a, b) => b.value - a.value).map((e, i) => {
+                      const pct = totalExpense > 0 ? (e.value / totalExpense) * 100 : 0
+                      const color = CATEGORY_LINE_COLORS[i % CATEGORY_LINE_COLORS.length]
+                      return (
+                        <div key={e.name}>
+                          <div style={{
+                            display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+                            gap: '10px', fontSize: '11px', marginBottom: '4px',
+                          }}>
+                            <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                              {e.name}
+                            </span>
+                            <span style={{ color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', flexShrink: 0, fontWeight: 600 }}>
+                              {fMc(e.value, displayCurrency)}
+                              <span style={{ color: 'var(--text-muted)', marginLeft: '6px', fontWeight: 400 }}>
+                                {pct.toFixed(0)}%
+                              </span>
+                            </span>
+                          </div>
+                          <div style={{ height: '6px', borderRadius: '3px', background: 'var(--bg-elevated)', overflow: 'hidden' }}>
+                            <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: '3px' }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </Card>
+            ) : (
             <Card title="Plan vs Executed" subtitle="All subcategories">
               <ResponsiveContainer width="100%" height={Math.max(expenseRows.length * 28, 320)}>
                 <BarChart
@@ -737,6 +787,7 @@ function MonthlyDetailTab() {
                 </BarChart>
               </ResponsiveContainer>
             </Card>
+            )}
 
           </div>
         </>

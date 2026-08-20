@@ -562,7 +562,7 @@ export default function TransactionForm({
 
         {/* Footer */}
         <div
-          className="px-6 py-4 flex flex-col gap-3 shrink-0"
+          className="slide-panel-footer px-6 py-4 flex flex-col gap-3 shrink-0"
           style={{ borderTop: '1px solid var(--border)' }}
         >
           {formError && (

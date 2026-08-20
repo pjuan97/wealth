@@ -161,7 +161,45 @@ html, body {
     width: calc(100% - 32px) !important;
     max-width: 440px;
   }
+  /* The drawer becomes a bottom sheet: inset from the top so it reads as a
+     panel over the page rather than a full takeover, and its action row is
+     lifted clear of the screen edge / iPhone home indicator, which made
+     Cancel and Save awkward to actually tap. */
   .slide-panel {
     width: 100% !important;
+    top: 28px !important;
+    height: calc(100dvh - 28px) !important;
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    border-left: none !important;
+    border-top: 1px solid var(--border-strong);
+  }
+  .slide-panel-footer {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  /* Reference tables that are mostly short values (dates, rates, a source
+     name) fit fine once the desktop's generous cell padding is reclaimed —
+     without it they squeeze until headers wrap mid-phrase ("Fetched / At"). */
+  .compact-table th,
+  .compact-table td { padding: 8px 6px !important; font-size: 10px !important; }
+  .compact-table th { white-space: nowrap; }
+
+  /* A table that fits once its numbers are abbreviated: drop the desktop
+     min-width that was forcing a horizontal scrollbar, and tighten cells so
+     every column stays on screen. The label column truncates rather than
+     wrapping, so rows stay one line tall. */
+  .fit-table { min-width: 0 !important; }
+  .fit-table th,
+  .fit-table td {
+    padding: 8px 4px !important;
+    font-size: 10px !important;
+  }
+  .fit-table th:first-child,
+  .fit-table td:first-child {
+    padding-left: 10px !important;
+    max-width: 118px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }

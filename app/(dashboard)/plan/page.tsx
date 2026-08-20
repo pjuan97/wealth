@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useCurrencyPreference } from '@/app/components/CurrencyPreferenceProvider'
+import { useIsMobile } from '@/app/components/useIsMobile'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface CategoryDef {
@@ -121,6 +122,23 @@ function formatMoney(n: number, currency: Currency) {
   return currency === 'USD' ? formatUSD(n) : formatCOP(n)
 }
 
+// Abbreviated form for phones. A full "$ 174.567.867" is ~13 characters; at
+// five columns that alone forces the table past the width of the screen.
+// Same numbers, fewer glyphs — so all five columns stay visible instead of
+// being pushed behind a horizontal scroll.
+function formatMoneyCompact(n: number, currency: Currency) {
+  if (n === 0) return '—'
+  const abs = Math.abs(n)
+  const sign = n < 0 ? '-' : ''
+  if (currency === 'USD') {
+    if (abs >= 1000) return `${sign}$${(abs / 1000).toFixed(1)}K`
+    return `${sign}$${abs.toFixed(0)}`
+  }
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`
+  return `${sign}$${abs.toFixed(0)}`
+}
+
 function formatAchievementPct(n: number | null) {
   if (n === null) return '—'
   return `${(n * 100).toFixed(1)}%`
@@ -160,9 +178,16 @@ function EditableAmount({
   onSave: (newValue: number) => Promise<void>
 }) {
   const { displayCurrency, convert, convertToNative } = useCurrencyPreference()
+  const isMobile = useIsMobile()
   const [editing, setEditing] = useState(false)
   const [raw, setRaw] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // Same full-vs-abbreviated rule as the page's `money`; this cell renders
+  // outside that component so it needs its own copy of the decision. Editing
+  // always shows the exact number — only the read-only display abbreviates.
+  const money = (n: number): string =>
+    isMobile ? formatMoneyCompact(n, displayCurrency) : formatMoney(n, displayCurrency)
 
   const displayValue = convert(value, nativeCurrency, month)
 
@@ -221,7 +246,7 @@ function EditableAmount({
         paddingBottom: '1px',
       }}
     >
-      {formatMoney(displayValue, displayCurrency)}
+      {money(displayValue)}
     </span>
   )
 }
@@ -489,6 +514,11 @@ function AddPlanItemModal({
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function PlanPage() {
   const { displayCurrency, convert } = useCurrencyPreference()
+  const isMobile = useIsMobile()
+  // One place decides full vs abbreviated amounts, so every cell in the table
+  // shrinks together on a phone instead of some columns overflowing.
+  const money = (n: number): string =>
+    isMobile ? formatMoneyCompact(n, displayCurrency) : formatMoney(n, displayCurrency)
   const [tab, setTab] = useState<'monthly' | 'annual'>('monthly')
   const [selectedMonth, setSelectedMonth] = useState(getDefaultMonth)
 
@@ -886,7 +916,7 @@ export default function PlanPage() {
                     {card.label}
                   </p>
                   <p style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                    {formatMoney(card.value, displayCurrency)}
+                    {money(card.value)}
                   </p>
                 </div>
               ))}
@@ -900,14 +930,18 @@ export default function PlanPage() {
                 <p style={{ color: 'var(--text-primary)', fontSize: '13px' }}>Loading…</p>
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: '700px' }}>
+              <table className="fit-table" style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: '700px' }}>
                 <thead>
                   <tr>
+                    {/* Header words are what set each column's minimum width,
+                        so on a phone they're abbreviated — otherwise
+                        "Difference" and "Variance %" alone push the table
+                        ~30px past the screen even with compact amounts. */}
                     <th style={{ ...thStyle('left'), paddingLeft: '32px', width: '280px' }}>Category</th>
                     <th style={thStyle()}>Plan</th>
-                    <th style={thStyle()}>Executed</th>
-                    <th style={thStyle()}>Difference</th>
-                    <th style={{ ...thStyle(), width: '120px' }}>Variance %</th>
+                    <th style={thStyle()}>{isMobile ? 'Exec' : 'Executed'}</th>
+                    <th style={thStyle()}>{isMobile ? 'Diff' : 'Difference'}</th>
+                    <th style={{ ...thStyle(), width: '120px' }}>{isMobile ? 'Var %' : 'Variance %'}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -927,15 +961,15 @@ export default function PlanPage() {
                       {expandedGroups.has('Income') ? '▾' : '▸'} Income
                     </td>
                     <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                      {formatMoney(incomeRows.reduce((s, r) => s + toDisplay(r.plan, r.currency, r.month_label), 0), displayCurrency)}
+                      {money(incomeRows.reduce((s, r) => s + toDisplay(r.plan, r.currency, r.month_label), 0))}
                     </td>
                     <td style={{ ...tdStyle(), fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                      {formatMoney(incomeRows.reduce((s, r) => s + toDisplay(r.executed, r.currency, r.month_label), 0), displayCurrency)}
+                      {money(incomeRows.reduce((s, r) => s + toDisplay(r.executed, r.currency, r.month_label), 0))}
                     </td>
                     <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                       {(() => {
                         const diff = incomeRows.reduce((s, r) => s + toDisplay(r.diff, r.currency, r.month_label), 0)
-                        return `${diff >= 0 ? '+' : ''}${formatMoney(diff, displayCurrency)}`
+                        return `${diff >= 0 ? '+' : ''}${money(diff)}`
                       })()}
                     </td>
                     <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums' }}>
@@ -962,10 +996,10 @@ export default function PlanPage() {
                         <EditableAmount value={row.plan} nativeCurrency={row.currency} month={row.month_label} onSave={v => updatePlan(row.id, v)} />
                       </td>
                       <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-                        {formatMoney(toDisplay(row.executed, row.currency, row.month_label), displayCurrency)}
+                        {money(toDisplay(row.executed, row.currency, row.month_label))}
                       </td>
                       <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                        {`${row.diff >= 0 ? '+' : ''}${formatMoney(toDisplay(row.diff, row.currency, row.month_label), displayCurrency)}`}
+                        {`${row.diff >= 0 ? '+' : ''}${money(toDisplay(row.diff, row.currency, row.month_label))}`}
                       </td>
                       <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums' }}>
                         {(() => {
@@ -992,15 +1026,15 @@ export default function PlanPage() {
                       {expandedGroups.has('Expenses') ? '▾' : '▸'} Expenses
                     </td>
                     <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontWeight: 700, fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
-                      {totals ? formatMoney(mergedTotal(totals, 'expense_plan', selectedMonth), displayCurrency) : '—'}
+                      {totals ? money(mergedTotal(totals, 'expense_plan', selectedMonth)) : '—'}
                     </td>
                     <td style={{ ...tdStyle(), fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
-                      {totals ? formatMoney(mergedTotal(totals, 'expense_exec', selectedMonth), displayCurrency) : '—'}
+                      {totals ? money(mergedTotal(totals, 'expense_exec', selectedMonth)) : '—'}
                     </td>
                     <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
                       {totals ? (() => {
                         const diff = mergedTotal(totals, 'expense_exec', selectedMonth) - mergedTotal(totals, 'expense_plan', selectedMonth)
-                        return `${diff >= 0 ? '+' : ''}${formatMoney(diff, displayCurrency)}`
+                        return `${diff >= 0 ? '+' : ''}${money(diff)}`
                       })() : '—'}
                     </td>
                     <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums', borderTop: '2px solid var(--border-strong)' }}>
@@ -1039,13 +1073,13 @@ export default function PlanPage() {
                           {isExpanded ? '▾' : '▸'} {l2}
                         </td>
                         <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-                          {formatMoney(groupPlan, displayCurrency)}
+                          {money(groupPlan)}
                         </td>
                         <td style={{ ...tdStyle(), fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                          {formatMoney(groupExec, displayCurrency)}
+                          {money(groupExec)}
                         </td>
                         <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                          {`${groupDiff >= 0 ? '+' : ''}${formatMoney(groupDiff, displayCurrency)}`}
+                          {`${groupDiff >= 0 ? '+' : ''}${money(groupDiff)}`}
                         </td>
                         <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums' }}>
                           {(() => {
@@ -1069,10 +1103,10 @@ export default function PlanPage() {
                             <EditableAmount value={row.plan} nativeCurrency={row.currency} month={row.month_label} onSave={v => updatePlan(row.id, v)} />
                           </td>
                           <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                            {formatMoney(toDisplay(row.executed, row.currency, row.month_label), displayCurrency)}
+                            {money(toDisplay(row.executed, row.currency, row.month_label))}
                           </td>
                           <td style={{ ...tdStyle(), color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                            {`${row.diff >= 0 ? '+' : ''}${formatMoney(toDisplay(row.diff, row.currency, row.month_label), displayCurrency)}`}
+                            {`${row.diff >= 0 ? '+' : ''}${money(toDisplay(row.diff, row.currency, row.month_label))}`}
                           </td>
                           <td style={{ ...tdStyle(), fontVariantNumeric: 'tabular-nums' }}>
                             {(() => {
@@ -1163,11 +1197,11 @@ export default function PlanPage() {
                               <td key={row.month} style={{ padding: '8px 16px 2px', fontSize: '11px', textAlign: 'right', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                                 {isRate
                                   ? formatAchievementPct(getVal(row, 'plan'))
-                                  : formatMoney(getVal(row, 'plan'), displayCurrency)}
+                                  : money(getVal(row, 'plan'))}
                               </td>
                             ))}
                             <td style={{ padding: '8px 16px 2px', fontSize: '11px', textAlign: 'right', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                              {isRate ? '—' : formatMoney(totalPlan, displayCurrency)}
+                              {isRate ? '—' : money(totalPlan)}
                             </td>
                           </tr>,
                           // Exec row
@@ -1186,12 +1220,12 @@ export default function PlanPage() {
                                 }}>
                                   {isRate
                                     ? formatAchievementPct(val)
-                                    : formatMoney(val, displayCurrency)}
+                                    : money(val)}
                                 </td>
                               )
                             })}
                             <td style={{ padding: '2px 16px 10px', fontSize: '13px', fontWeight: 700, textAlign: 'right', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                              {isRate ? '—' : formatMoney(totalExec, displayCurrency)}
+                              {isRate ? '—' : money(totalExec)}
                             </td>
                           </tr>,
                         ]
@@ -1208,16 +1242,20 @@ export default function PlanPage() {
                 borderRadius: '14px',
                 overflow: 'hidden',
               }}>
-                <div style={{
+                <div className="header-row" style={{
                   padding: '16px 20px',
                   borderBottom: '1px solid var(--border)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
                 }}>
-                  <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Category Breakdown
-                  </p>
+                  <div>
+                    <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Category Breakdown
+                    </p>
+                    {/* Each cell stacks two unlabelled numbers; without this
+                        line there was no way to tell which was which. */}
+                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                      Per month: executed amount · below it, % of plan achieved
+                    </p>
+                  </div>
                   <div style={{ display: 'flex', gap: '4px' }}>
                     {(['all', 'Income', 'Expense'] as const).map(f => (
                       <button
@@ -1243,7 +1281,7 @@ export default function PlanPage() {
                   <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: '900px' }}>
                     <thead>
                       <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                        <th style={{ ...thStyle('left'), paddingLeft: '20px', width: '200px' }}>Category</th>
+                        <th style={{ ...thStyle('left'), paddingLeft: '20px', width: '200px', left: 0, zIndex: 12 }}>Category</th>
                         {annualMonths.map(m => (
                           <th key={m} style={thStyle()}>{MONTH_SHORT[m] || m}</th>
                         ))}
@@ -1257,8 +1295,14 @@ export default function PlanPage() {
                           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-elevated)' }}
                           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                         >
-                          <td style={{ padding: '10px 16px 10px 20px', fontSize: '12px', color: 'var(--text-primary)' }}>
-                            <span style={{ fontSize: '10px', color: 'var(--text-primary)', marginRight: '6px', textTransform: 'uppercase' }}>
+                          {/* Pinned so the category stays readable while the
+                              12 month columns scroll past it. */}
+                          <td style={{
+                            padding: '10px 16px 10px 20px', fontSize: '12px', color: 'var(--text-primary)',
+                            position: 'sticky', left: 0, zIndex: 3, background: 'var(--bg-base)',
+                            maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginRight: '6px', textTransform: 'uppercase' }}>
                               {cat.eventType === 'Income' ? '↑' : '↓'}
                             </span>
                             {cat.level_2}
@@ -1268,15 +1312,19 @@ export default function PlanPage() {
                           </td>
                           {cat.months.map(m => (
                             <td key={m.month} style={{ padding: '10px 16px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                              {/* Everything here used to be text-primary, so the
+                                  achievement % looked exactly as important as
+                                  the amount and the two ran together. The % is
+                                  now visibly secondary. */}
                               {m.exec === 0 && m.plan === 0 ? (
-                                <span style={{ color: 'var(--text-primary)', fontSize: '11px' }}>—</span>
+                                <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>—</span>
                               ) : (
                                 <div>
                                   <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                                    {formatMoney(toDisplay(m.exec, cat.currency, m.month), displayCurrency)}
+                                    {money(toDisplay(m.exec, cat.currency, m.month))}
                                   </div>
                                   {m.plan > 0 && (
-                                    <div style={{ fontSize: '10px', color: 'var(--text-primary)', marginTop: '1px' }}>
+                                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>
                                       {formatAchievementPct(m.achievement)}
                                     </div>
                                   )}

@@ -15,13 +15,16 @@ export default function ConfirmDialog({
 
   return (
     <>
+      {/* Same z-index fix as TransactionForm: the mobile bottom tab bar is at
+          900, so Tailwind's z-50 put this confirmation — and its buttons —
+          underneath it on phones. Every other overlay here uses 1000. */}
       <div
-        className="fixed inset-0 z-50"
-        style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+        className="fixed inset-0"
+        style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 1000 }}
         onClick={onCancel}
       />
       <div
-        className="modal-box fixed z-50 rounded-xl shadow-2xl"
+        className="modal-box fixed rounded-xl shadow-2xl"
         style={{
           top: '50%',
           left: '50%',
@@ -30,6 +33,7 @@ export default function ConfirmDialog({
           background: 'var(--bg-surface)',
           border: '1px solid var(--border-strong)',
           padding: '24px',
+          zIndex: 1001,
         }}
       >
         <h3

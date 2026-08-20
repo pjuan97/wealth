@@ -327,20 +327,25 @@ export default function TransactionForm({
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop.
+          z-index note: the mobile bottom tab bar sits at 900, and every other
+          overlay in this app uses 1000. Tailwind's z-40/z-50 left this drawer
+          *underneath* the tab bar, which silently covered the Save/Cancel row
+          on phones — the buttons rendered but could not be tapped. */}
       <div
-        className="fixed inset-0 z-40"
-        style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(2px)' }}
+        className="fixed inset-0"
+        style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(2px)', zIndex: 1000 }}
         onClick={onClose}
       />
 
       {/* Panel */}
       <div
-        className="slide-panel fixed right-0 top-0 h-full z-50 flex flex-col"
+        className="slide-panel fixed right-0 top-0 h-full flex flex-col"
         style={{
           width: '440px',
           background: 'var(--bg-surface)',
           borderLeft: '1px solid var(--border)',
+          zIndex: 1001,
         }}
       >
         {/* Header */}

@@ -69,15 +69,20 @@ export async function GET(request: NextRequest) {
     })
 
     for (const account of investmentAccounts) {
-      // Try manual market_value_end first
-      const withManual = latestEquity.find(
+      // A platform can hold several rows in the same month (one per equity_type,
+      // e.g. ETFs and Companies), so take the latest month that has any manual
+      // value and add that whole month up — picking a single row would drop the
+      // rest of the portfolio from net worth.
+      const manualMonth = latestEquity.find(
         e => e.platform === account && e.market_value_end !== null
-      )
+      )?.month_label
 
       let balance = 0
 
-      if (withManual) {
-        balance = Number(withManual.market_value_end)
+      if (manualMonth) {
+        balance = latestEquity
+          .filter(e => e.platform === account && e.month_label === manualMonth)
+          .reduce((s, e) => s + Number(e.market_value_end ?? 0), 0)
       } else {
         // Fallback: compute from transactions
         const forecast = latestForecast.find(f => f.account === account)
@@ -193,7 +198,8 @@ export async function GET(request: NextRequest) {
         // Investment balances: use market_value_end for this month if available
         let investTotal = 0
         for (const account of investmentAccounts) {
-          const execRow = await prisma.equityExecuted.findFirst({
+          // Same as above: sum every equity_type row the platform has this month.
+          const execRows = await prisma.equityExecuted.findMany({
             where: {
               user_id: userId,
               platform: account,
@@ -201,16 +207,14 @@ export async function GET(request: NextRequest) {
               market_value_end: { not: null },
             },
           })
-          if (execRow) {
-            investTotal += Number(execRow.market_value_end)
+          if (execRows.length > 0) {
+            investTotal += execRows.reduce((s, e) => s + Number(e.market_value_end ?? 0), 0)
           } else {
             // Use forecast projected_end as estimate
-            const forecastRow = await prisma.equityForecast.findFirst({
+            const forecastRows = await prisma.equityForecast.findMany({
               where: { user_id: userId, account, month_label: month },
             })
-            if (forecastRow) {
-              investTotal += Number(forecastRow.projected_end)
-            }
+            investTotal += forecastRows.reduce((s, f) => s + Number(f.projected_end), 0)
           }
         }
 

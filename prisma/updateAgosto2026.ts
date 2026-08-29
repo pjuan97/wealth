@@ -49,7 +49,8 @@ const INTERPOLAR: Array<{
   saldoHasta: number
 }> = [
   // Trii: parte invertida (Acciones y ETFs). El disponible va a Trii (Cash).
-  { platform: 'Trii (Investment)', desde: '2026-03', saldoDesde: 16459490, hasta: '2026-08', saldoHasta: 15695245 },
+  // 15.746.800 es el CIERRE de marzo; 16.459.490 era la apertura de ese mes.
+  { platform: 'Trii (Investment)', desde: '2026-03', saldoDesde: 15746800, hasta: '2026-08', saldoHasta: 15695245 },
   { platform: 'Tyba', desde: '2026-03', saldoDesde: 20498627, hasta: '2026-08', saldoHasta: 22243124 },
   // ARQ: 2.943,22 USD convertidos a la TRM más reciente disponible en la base.
   { platform: 'Dollar App (Investment)', desde: '2026-03', saldoDesde: 9250466, hasta: '2026-08', saldoHasta: -1 },

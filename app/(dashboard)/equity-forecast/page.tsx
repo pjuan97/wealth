@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
+import { useIsMobile } from '@/app/components/useIsMobile'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface EquityRow {
@@ -315,6 +316,7 @@ function EditableStartBalance({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function EquityForecastPage() {
+  const isMobile = useIsMobile()
   const [tab, setTab] = useState<'monthly' | 'annual'>('monthly')
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth)
 
@@ -398,9 +400,15 @@ export default function EquityForecastPage() {
     textAlign: align,
     position: 'sticky',
     top: 0,
-    background: 'var(--bg-base)',
+    // Rows are transparent over the page's own bg-base, so a sticky header
+    // using that same color had no visible seam from the content scrolling
+    // under it — during a scroll it read as "floating and blending in"
+    // rather than clearly pinned. bg-elevated + a shadow make the frozen
+    // header visually distinct from the scrolling rows.
+    background: 'var(--bg-elevated)',
     zIndex: 10,
-    borderBottom: '1px solid var(--border)',
+    borderBottom: '1px solid var(--border-strong)',
+    boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
     whiteSpace: 'nowrap',
   })
 
@@ -417,7 +425,7 @@ export default function EquityForecastPage() {
   const monthLabel = (MONTHS.find(m => m.key === selectedMonth)?.label || '') + ' 2026'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
 
       {/* Header */}
       <div style={{
@@ -479,11 +487,9 @@ export default function EquityForecastPage() {
 
           {/* Summary cards */}
           {totals && (
-            <div style={{
+            <div className="g-4" style={{
               padding: '16px 32px',
               borderBottom: '1px solid var(--border)',
-              display: 'grid',
-              gridTemplateColumns: 'repeat(4, 1fr)',
               gap: '12px', flexShrink: 0,
             }}>
               {[
@@ -510,13 +516,82 @@ export default function EquityForecastPage() {
           )}
 
           {/* Table */}
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="page-body" style={{ flex: 1, overflowY: 'auto' }}>
             {loadingMonthly ? (
               <div style={{ padding: '60px', textAlign: 'center' }}>
                 <p style={{ color: 'var(--text-primary)', fontSize: '13px' }}>Loading…</p>
               </div>
+            ) : isMobile ? (
+              /* Nine columns of currency cannot fit a phone at any font size,
+                 so each account becomes a card instead. Same fields, same
+                 editable cells — stacked vertically, which a phone scrolls
+                 naturally, instead of sideways where the account name (the
+                 one thing you need to keep in view) scrolls out of sight. */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {rows.map(row => {
+                  const variancePct = row.market_variance !== null && row.expected_end > 0
+                    ? (row.market_variance / row.expected_end) * 100
+                    : null
+                  const line = (label: string, node: React.ReactNode) => (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      gap: '10px', padding: '7px 0', borderTop: '1px solid var(--border)',
+                    }}>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', flexShrink: 0 }}>{label}</span>
+                      <span style={{ fontSize: '12px', color: 'var(--text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {node}
+                      </span>
+                    </div>
+                  )
+                  return (
+                    <div key={row.id} style={{
+                      background: 'var(--bg-surface)', border: '1px solid var(--border)',
+                      borderRadius: '12px', padding: '12px 14px',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '18px', flexShrink: 0 }}>{ACCOUNT_ICONS[row.account] || '💰'}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {row.account}
+                          </p>
+                          <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{row.equity_type}</p>
+                        </div>
+                      </div>
+                      {line('Annual Rate', <EditableRate value={row.annual_rate} onSave={v => updateAnnualRate(row.id, v)} />)}
+                      {line('Monthly Rate', `${(row.monthly_rate * 100).toFixed(4)}%`)}
+                      {line('Start Balance', (
+                        <EditableStartBalance
+                          value={row.start_balance}
+                          editable={selectedMonth === '2026-01'}
+                          onSave={v => updateStartBalance(row.id, v)}
+                        />
+                      ))}
+                      {line('Net Flow', row.net_flow !== 0
+                        ? `${row.net_flow >= 0 ? '+' : ''}${formatCOP(row.net_flow)}`
+                        : '—')}
+                      {line('Expected End', formatCOP(row.expected_end))}
+                      {line('Cierre Real', (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <EditableMarketValue value={row.market_value_end} onSave={v => updateMarketValue(row.exec_id!, v)} />
+                          {row.is_estimated && (
+                            <span style={{
+                              fontSize: '9px', padding: '1px 5px', borderRadius: '3px',
+                              background: 'var(--bg-elevated)', border: '1px solid var(--border-strong)',
+                              color: 'var(--text-muted)', fontWeight: 600, flexShrink: 0,
+                            }}>est.</span>
+                          )}
+                        </span>
+                      ))}
+                      {line('Market Variance', row.market_variance !== null
+                        ? `${row.market_variance >= 0 ? '+' : ''}${formatCOP(row.market_variance)}${variancePct !== null ? ` (${variancePct >= 0 ? '+' : ''}${variancePct.toFixed(2)}%)` : ''}`
+                        : '—')}
+                      {line('Return %', formatPct(row.return_pct))}
+                    </div>
+                  )
+                })}
+              </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+              <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: '900px' }}>
                 <thead>
                   <tr>
                     <th style={{ ...thStyle('left'), paddingLeft: '32px', width: '220px' }}>Account</th>
@@ -674,7 +749,7 @@ export default function EquityForecastPage() {
 
       {/* ── ANNUAL TAB ────────────────────────────────────────────────────── */}
       {tab === 'annual' && (
-        <div style={{ flex: 1, overflowY: 'auto' }}>
+        <div className="page-body" style={{ flex: 1, overflowY: 'auto' }}>
           {loadingAnnual ? (
             <div style={{ padding: '60px', textAlign: 'center' }}>
               <p style={{ color: 'var(--text-primary)', fontSize: '13px' }}>Loading…</p>
@@ -698,7 +773,7 @@ export default function EquityForecastPage() {
                   </p>
                 </div>
                 <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: '900px' }}>
                     <thead>
                       <tr style={{ borderBottom: '1px solid var(--border)' }}>
                         <th style={{ ...thStyle('left'), paddingLeft: '20px', width: '160px' }}>Account</th>
@@ -721,7 +796,12 @@ export default function EquityForecastPage() {
                         ))}
                       </tr>
                       <tr style={{ borderBottom: '2px solid var(--border-strong)' }}>
-                        <td style={{ padding: '2px 16px 10px 20px' }} />
+                        {/* This row was unlabelled, so it read as a stray line of
+                            numbers with no way to tell it apart from the projected
+                            row above it. */}
+                        <td style={{ padding: '2px 16px 10px 20px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                          <span style={{ marginLeft: '6px' }}>real</span>
+                        </td>
                         {portfolioByMonth.map(p => (
                           <td key={p.month} style={{ padding: '2px 16px 10px', fontSize: '13px', fontWeight: 700, textAlign: 'right', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                             {p.market_value !== null ? formatCOP(p.market_value) : '—'}
@@ -729,9 +809,11 @@ export default function EquityForecastPage() {
                         ))}
                       </tr>
 
-                      {/* Per-account rows */}
+                      {/* Per-account rows — a Fragment, not a nested <tbody>:
+                          a <tbody> inside a <tbody> is invalid HTML and browsers
+                          silently restructure the table to recover from it. */}
                       {matrix.map(row => (
-                        <tbody key={row.account}>
+                        <Fragment key={row.account}>
                           <tr style={{ borderBottom: 'none' }}>
                             <td style={{ padding: '8px 16px 2px 20px', fontSize: '12px', color: 'var(--text-primary)' }}>
                               {ACCOUNT_ICONS[row.account] || '💰'} {row.account}
@@ -744,14 +826,16 @@ export default function EquityForecastPage() {
                             ))}
                           </tr>
                           <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                            <td style={{ padding: '2px 16px 10px 20px' }} />
+                            <td style={{ padding: '2px 16px 10px 20px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                              <span style={{ marginLeft: '6px' }}>real</span>
+                            </td>
                             {row.months.map(m => (
                               <td key={m.month} style={{ padding: '2px 16px 10px', fontSize: '12px', fontWeight: 600, textAlign: 'right', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                                 {m.market_value_end !== null ? formatCOP(m.market_value_end) : '—'}
                               </td>
                             ))}
                           </tr>
-                        </tbody>
+                        </Fragment>
                       ))}
                     </tbody>
                   </table>

@@ -296,11 +296,12 @@ function SortableHeader({
         textTransform: 'uppercase',
         letterSpacing: '0.05em',
         textAlign: align,
-        borderBottom: '1px solid var(--border)',
+        borderBottom: '1px solid var(--border-strong)',
         whiteSpace: 'nowrap',
         position: 'sticky',
         top: 0,
-        background: 'var(--bg-base)',
+        background: 'var(--bg-elevated)',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
         zIndex: 5,
         cursor: 'pointer',
         userSelect: 'none',
@@ -754,7 +755,7 @@ export default function AIImportPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
 
       {/* Hidden file input */}
       <input
@@ -777,7 +778,7 @@ export default function AIImportPage() {
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
         }}>
-          <div style={{
+          <div className="modal-box" style={{
             background: 'var(--bg-surface)', border: '1px solid var(--border-strong)',
             borderRadius: '16px', padding: '28px 32px', width: '440px',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
@@ -838,9 +839,9 @@ export default function AIImportPage() {
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '24px',
         }}>
-          <div style={{
+          <div className="modal-box" style={{
             background: 'var(--bg-surface)', border: '1px solid var(--border-strong)',
-            borderRadius: '16px', width: '520px', maxHeight: '85vh', overflowY: 'auto',
+            borderRadius: '16px', width: '520px', maxHeight: '85dvh', overflowY: 'auto',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
@@ -934,10 +935,12 @@ export default function AIImportPage() {
           Upload bank statement screenshots &rarr; AI extracts transactions &rarr; Review &amp; approve
         </p>
 
-        {/* Step indicator */}
-        <div style={{ display: 'flex', gap: '4px', marginTop: '16px' }}>
+        {/* Step indicator — a 5-step arrow chain doesn't wrap cleanly onto
+            multiple lines, so on a narrow screen it scrolls as its own
+            contained strip instead (same pattern as the month tabs). */}
+        <div style={{ display: 'flex', gap: '4px', marginTop: '16px', overflowX: 'auto' }}>
           {(['upload', 'apikey', 'analyzing', 'review', 'done'] as Step[]).map((s, i) => (
-            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
               <div style={{
                 width: '24px', height: '24px',
                 borderRadius: '50%',
@@ -964,7 +967,7 @@ export default function AIImportPage() {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
+      <div className="page-body" style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
 
         {/* ── STEP 1: ACCOUNT & UPLOAD ────────────────────────────────────── */}
         {step === 'upload' && (
@@ -1531,20 +1534,21 @@ export default function AIImportPage() {
               border: '1px solid var(--border)',
               borderRadius: '14px',
               overflow: 'hidden',
-              maxHeight: 'calc(100vh - 340px)',
+              maxHeight: 'calc(100dvh - 340px)',
               overflowY: 'auto',
               overflowX: 'auto',
             }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+                <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: '900px' }}>
                   <thead>
-                    <tr style={{ background: 'var(--bg-base)' }}>
+                    <tr style={{ background: 'var(--bg-elevated)' }}>
                       <th style={{
                         padding: '10px 10px',
                         textAlign: 'center',
-                        borderBottom: '1px solid var(--border)',
+                        borderBottom: '1px solid var(--border-strong)',
                         position: 'sticky',
                         top: 0,
-                        background: 'var(--bg-base)',
+                        background: 'var(--bg-elevated)',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
                         zIndex: 5,
                       }}>
                         <input
@@ -1573,14 +1577,14 @@ export default function AIImportPage() {
                       <th style={{
                         padding: '10px 10px', fontSize: '10px', fontWeight: 700,
                         color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em',
-                        textAlign: 'left', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
-                        position: 'sticky', top: 0, background: 'var(--bg-base)', zIndex: 5,
+                        textAlign: 'left', borderBottom: '1px solid var(--border-strong)', whiteSpace: 'nowrap',
+                        position: 'sticky', top: 0, background: 'var(--bg-elevated)', boxShadow: '0 2px 6px rgba(0,0,0,0.25)', zIndex: 5,
                       }}>From</th>
                       <th style={{
                         padding: '10px 10px', fontSize: '10px', fontWeight: 700,
                         color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em',
-                        textAlign: 'left', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
-                        position: 'sticky', top: 0, background: 'var(--bg-base)', zIndex: 5,
+                        textAlign: 'left', borderBottom: '1px solid var(--border-strong)', whiteSpace: 'nowrap',
+                        position: 'sticky', top: 0, background: 'var(--bg-elevated)', boxShadow: '0 2px 6px rgba(0,0,0,0.25)', zIndex: 5,
                       }}>To</th>
                       <SortableHeader label="Notes" sortKey="notes" currentSort={sortConfig} onSort={handleSort} />
                       <th style={{
@@ -1591,11 +1595,12 @@ export default function AIImportPage() {
                         textTransform: 'uppercase',
                         letterSpacing: '0.05em',
                         textAlign: 'center',
-                        borderBottom: '1px solid var(--border)',
+                        borderBottom: '1px solid var(--border-strong)',
                         whiteSpace: 'nowrap',
                         position: 'sticky',
                         top: 0,
-                        background: 'var(--bg-base)',
+                        background: 'var(--bg-elevated)',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
                         zIndex: 5,
                       }}>Apply</th>
                     </tr>

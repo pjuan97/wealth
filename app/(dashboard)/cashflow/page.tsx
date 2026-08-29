@@ -120,7 +120,7 @@ function AccountSelectorModal({
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
     }}>
-      <div style={{
+      <div className="modal-box" style={{
         background: 'var(--bg-surface)', border: '1px solid var(--border-strong)',
         borderRadius: '14px', padding: '28px 32px', width: '400px',
         boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
@@ -191,7 +191,7 @@ function SaveChangesModal({
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
     }}>
-      <div style={{
+      <div className="modal-box" style={{
         background: 'var(--bg-surface)', border: '1px solid var(--border-strong)',
         borderRadius: '14px', padding: '28px 32px', width: '420px',
         boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
@@ -478,25 +478,42 @@ export default function CashflowPage() {
   // ── Column styles ──────────────────────────────────────────────────────────
   const COL_W = '90px'
 
+  // With 12 months × 3 sub-columns the grid is 36 columns wide, and every
+  // month looked identical — impossible to tell at a glance where one month
+  // ends and the next begins. Alternating months get a faint blue wash (the
+  // spreadsheet banding trick), while the current month keeps its orange.
+  const monthTint = (m: string, strong = false): string => {
+    if (isCurrent(m)) return strong ? 'var(--accent-subtle)' : 'rgba(249,115,22,0.04)'
+    const isAlt = MONTHS.indexOf(m) % 2 === 1
+    if (!isAlt) return strong ? 'var(--bg-elevated)' : 'transparent'
+    return strong ? 'rgba(56,110,190,0.16)' : 'rgba(56,110,190,0.07)'
+  }
+
+  // Rows here are transparent/bg-base by default, so a sticky header sharing
+  // that same color had no visible seam from content scrolling underneath —
+  // it read as "floating and blending in" rather than clearly pinned.
+  // bg-elevated + a shadow anchor it as visually distinct.
   const monthHeaderStyle = (m: string): React.CSSProperties => ({
     padding: '6px 0', fontSize: '10px',
     fontWeight: isCurrent(m) ? 800 : 600,
     color: isCurrent(m) ? 'var(--accent)' : isFuture(m) ? 'var(--text-muted)' : 'var(--text-secondary)',
     textAlign: 'center',
-    borderBottom: '1px solid var(--border)',
-    background: isCurrent(m) ? 'var(--accent-subtle)' : 'var(--bg-base)',
+    borderBottom: '1px solid var(--border-strong)',
+    background: monthTint(m, true),
     position: 'sticky', top: 0, zIndex: 10, whiteSpace: 'nowrap',
     borderLeft: isCurrent(m) ? '1px solid var(--accent-border)' : 'none',
+    boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
   })
 
   const subHeaderStyle = (m: string): React.CSSProperties => ({
     padding: '4px 6px', fontSize: '9px', fontWeight: 600,
     color: isCurrent(m) ? 'var(--accent)' : 'var(--text-muted)',
     textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.04em',
-    borderBottom: '1px solid var(--border)',
-    background: isCurrent(m) ? 'var(--accent-subtle)' : 'var(--bg-base)',
+    borderBottom: '1px solid var(--border-strong)',
+    background: monthTint(m, true),
     position: 'sticky', top: '28px', zIndex: 9,
     width: COL_W, minWidth: COL_W, maxWidth: COL_W,
+    boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
   })
 
   const cellStyle = (m: string): React.CSSProperties => ({
@@ -506,7 +523,7 @@ export default function CashflowPage() {
     borderBottom: '1px solid var(--border)',
     fontVariantNumeric: 'tabular-nums',
     width: COL_W, minWidth: COL_W, maxWidth: COL_W,
-    background: isCurrent(m) ? 'rgba(249,115,22,0.04)' : 'transparent',
+    background: monthTint(m),
     borderLeft: isCurrent(m) ? '1px solid var(--accent-border)' : 'none',
   })
 
@@ -533,18 +550,18 @@ export default function CashflowPage() {
   }
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100dvh' }}>
       <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Loading cashflow…</p>
     </div>
   )
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
 
       {/* Header */}
-      <div style={{
+      <div className="header-row" style={{
         padding: '20px 32px 16px', borderBottom: '1px solid var(--border)',
-        flexShrink: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+        flexShrink: 0, alignItems: 'flex-start',
       }}>
         <div>
           <h1 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)' }}>
@@ -554,7 +571,7 @@ export default function CashflowPage() {
             Plan vs Ejecutado · 2026 · Rolling Opening Balance
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div className="header-row-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
 
           {/* Unsaved indicator */}
           {hasUnsavedChanges && (
@@ -616,16 +633,17 @@ export default function CashflowPage() {
       )}
 
       {/* Table */}
-      <div style={{ flex: 1, overflow: 'auto' }}>
-        <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+      <div className="page-body" style={{ flex: 1, overflow: 'auto' }}>
+        <table style={{ borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed' }}>
           <thead>
             {/* Month headers */}
             <tr>
               <th style={{
                 ...stickyLabel(0), position: 'sticky', left: 0, top: 0, zIndex: 20,
-                background: 'var(--bg-base)', borderBottom: '1px solid var(--border)',
+                background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border-strong)',
                 fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
                 textTransform: 'uppercase', letterSpacing: '0.05em',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
               }}>CATEGORY</th>
               {MONTHS.map(m => (
                 <th key={m} colSpan={3} style={monthHeaderStyle(m)}>

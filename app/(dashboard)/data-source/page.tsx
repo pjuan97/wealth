@@ -82,7 +82,7 @@ function PropagateModal({
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       zIndex: 1000,
     }}>
-      <div style={{
+      <div className="modal-box" style={{
         background: 'var(--bg-surface)',
         border: '1px solid var(--border-strong)',
         borderRadius: '14px',
@@ -174,7 +174,7 @@ function DeleteConfirmModal({
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       zIndex: 1000,
     }}>
-      <div style={{
+      <div className="modal-box" style={{
         background: 'var(--bg-surface)',
         border: '1px solid var(--border-strong)',
         borderRadius: '14px',
@@ -471,11 +471,12 @@ export default function DataSourcePage() {
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
     textAlign: 'left',
-    borderBottom: '1px solid var(--border)',
-    background: 'var(--bg-base)',
+    borderBottom: '1px solid var(--border-strong)',
+    background: 'var(--bg-elevated)',
     position: 'sticky',
     top: 0,
     zIndex: 10,
+    boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
   }
 
   const tdStyle: React.CSSProperties = {
@@ -492,7 +493,7 @@ export default function DataSourcePage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
 
       {/* Header */}
       <div style={{
@@ -500,10 +501,7 @@ export default function DataSourcePage() {
         borderBottom: '1px solid var(--border)',
         flexShrink: 0,
       }}>
-        <div style={{
-          display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', marginBottom: '16px',
-        }}>
+        <div className="header-row" style={{ marginBottom: '16px' }}>
           <div>
             <h1 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)' }}>
               Data Source
@@ -584,9 +582,9 @@ export default function DataSourcePage() {
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '24px',
         }}>
-          <div style={{
+          <div className="modal-box" style={{
             background: 'var(--bg-surface)', border: '1px solid var(--border-strong)',
-            borderRadius: '16px', width: '480px', maxHeight: '85vh', overflowY: 'auto',
+            borderRadius: '16px', width: '480px', maxHeight: '85dvh', overflowY: 'auto',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           }}>
             {/* Header */}
@@ -734,7 +732,7 @@ export default function DataSourcePage() {
         </div>
       )}
 
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div className="page-body" style={{ flex: 1, overflowY: 'auto' }}>
 
         {showAdd && (
           <div style={{
@@ -845,7 +843,7 @@ export default function DataSourcePage() {
             <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Loading\u2026</p>
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
 
             {tab === 'accounts' && (
               <>

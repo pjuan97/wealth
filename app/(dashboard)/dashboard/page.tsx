@@ -7,6 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import { useCurrencyPreference } from '@/app/components/CurrencyPreferenceProvider'
+import { useIsMobile } from '@/app/components/useIsMobile'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Currency = 'COP' | 'USD'
@@ -162,7 +163,7 @@ function Card({ title, subtitle, children }: {
         <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>{title}</p>
         {subtitle && <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{subtitle}</p>}
       </div>
-      <div style={{ padding: '16px 20px' }}>{children}</div>
+      <div className="card-body" style={{ padding: '16px 20px' }}>{children}</div>
     </div>
   )
 }
@@ -210,7 +211,7 @@ function MiniTable({ headers, rows }: {
 }) {
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+      <table className="mini-table" style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: '11px' }}>
         <thead>
           <tr>
             {headers.map((h, i) => (
@@ -303,7 +304,7 @@ function OverviewTab() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
       {/* KPI row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px' }}>
+      <div className="g-5" style={{ gap: '12px' }}>
         <KpiCard label="Net Worth" value={money(netWorth)} accent />
         <KpiCard label="YTD Income" value={money(ytd.income)} sub={`${ytd.months} months`} />
         <KpiCard label="YTD Expense" value={money(ytd.expense)} />
@@ -312,7 +313,7 @@ function OverviewTab() {
       </div>
 
       {/* Income vs Expense chart + table */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
+      <div className="g-main-side" style={{ gap: '16px' }}>
         <Card title="Income vs Expense vs Balance" subtitle="Monthly">
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={withData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
@@ -342,7 +343,7 @@ function OverviewTab() {
       </div>
 
       {/* Income by source chart + table */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
+      <div className="g-main-side" style={{ gap: '16px' }}>
         <Card title="Income by Source" subtitle="Salary vs Other Incomes">
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={withData.map(m => {
@@ -385,7 +386,7 @@ function OverviewTab() {
       </div>
 
       {/* Expense by Category — line chart + table (categories are this user's own) */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
+      <div className="g-main-side" style={{ gap: '16px' }}>
         <Card title="Expense by Category" subtitle={`${cats.join(' / ')} — monthly trend`}>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart
@@ -486,7 +487,7 @@ function PlanTab() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
       {/* Income Plan vs Executed */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
+      <div className="g-main-side" style={{ gap: '16px' }}>
         <Card title="Income: Plan vs Executed" subtitle="Monthly comparison">
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={withData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
@@ -524,7 +525,7 @@ function PlanTab() {
       </div>
 
       {/* Expense Plan vs Executed */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
+      <div className="g-main-side" style={{ gap: '16px' }}>
         <Card title="Expense: Plan vs Executed" subtitle="Monthly comparison">
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={withData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
@@ -562,7 +563,7 @@ function PlanTab() {
       </div>
 
       {/* Expense breakdown by category — categories are this user's own */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
+      <div className="g-main-side" style={{ gap: '16px' }}>
         <Card title="Expense by Category" subtitle={cats.join(' / ')}>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart
@@ -618,6 +619,7 @@ function PlanTab() {
 // ─── MONTHLY DETAIL TAB ──────────────────────────────────────────────────────
 function MonthlyDetailTab() {
   const { displayCurrency, convert } = useCurrencyPreference()
+  const isMobile = useIsMobile()
   const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH)
   const [data, setData] = useState<{
     rows: MonthlyRow[]
@@ -676,14 +678,14 @@ function MonthlyDetailTab() {
       ) : (
         <>
           {/* KPIs */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+          <div className="g-3" style={{ gap: '12px' }}>
             <KpiCard label="Income" value={fMoney(kpis!.income, displayCurrency)} />
             <KpiCard label="Expense" value={fMoney(kpis!.expense, displayCurrency)} />
             <KpiCard label="Balance" value={fMoney(kpis!.balance, displayCurrency)} accent={kpis!.balance >= 0} />
           </div>
 
           {/* Expense drilldown — full width layout */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignItems: 'start' }}>
+          <div className="g-2" style={{ gap: '16px', alignItems: 'start' }}>
 
             {/* Table — full height, no internal scroll */}
             <Card title={`Expenses — ${MONTH_LABELS[selectedMonth]}`} subtitle="Plan vs Executed by subcategory">
@@ -702,7 +704,55 @@ function MonthlyDetailTab() {
               />
             </Card>
 
-            {/* Horizontal bar chart — Plan vs Executed per subcategory */}
+            {/* On a phone the horizontal bar chart is unreadable: the category
+                labels alone claim 120px of a ~340px card, leaving the bars a
+                sliver, and one row per subcategory makes it extremely tall.
+                Plan-vs-Executed per row is already in the table beside it, so
+                the chart's job here is the visual "where did the money go" —
+                which a donut of executed spend answers legibly at this size. */}
+            {isMobile ? (
+              <Card title="Executed by Category" subtitle={`${MONTH_LABELS[selectedMonth]} · share of spend`}>
+                {expensePie.length === 0 ? (
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center', padding: '32px 0' }}>
+                    No expenses recorded for this month
+                  </p>
+                ) : (
+                  /* Plain CSS bars rather than a Recharts donut: Pie renders
+                     nothing in this app (see the equally blank "Expense
+                     Distribution YTD" chart), while these are guaranteed to
+                     draw and read better in a narrow column anyway. Sorted
+                     biggest-first so the top of the list answers "where did
+                     most of the money go". */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
+                    {[...expensePie].sort((a, b) => b.value - a.value).map((e, i) => {
+                      const pct = totalExpense > 0 ? (e.value / totalExpense) * 100 : 0
+                      const color = CATEGORY_LINE_COLORS[i % CATEGORY_LINE_COLORS.length]
+                      return (
+                        <div key={e.name}>
+                          <div style={{
+                            display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+                            gap: '10px', fontSize: '11px', marginBottom: '4px',
+                          }}>
+                            <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                              {e.name}
+                            </span>
+                            <span style={{ color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', flexShrink: 0, fontWeight: 600 }}>
+                              {fMc(e.value, displayCurrency)}
+                              <span style={{ color: 'var(--text-muted)', marginLeft: '6px', fontWeight: 400 }}>
+                                {pct.toFixed(0)}%
+                              </span>
+                            </span>
+                          </div>
+                          <div style={{ height: '6px', borderRadius: '3px', background: 'var(--bg-elevated)', overflow: 'hidden' }}>
+                            <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: '3px' }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </Card>
+            ) : (
             <Card title="Plan vs Executed" subtitle="All subcategories">
               <ResponsiveContainer width="100%" height={Math.max(expenseRows.length * 28, 320)}>
                 <BarChart
@@ -737,6 +787,7 @@ function MonthlyDetailTab() {
                 </BarChart>
               </ResponsiveContainer>
             </Card>
+            )}
 
           </div>
         </>
@@ -791,7 +842,7 @@ function EquityTab() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
       {/* Portfolio KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+      <div className="g-4" style={{ gap: '12px' }}>
         {byAccount.filter(a => a.latestExecuted !== null).map(a => (
           <KpiCard
             key={a.account}
@@ -804,7 +855,7 @@ function EquityTab() {
       </div>
 
       {/* Portfolio evolution + distribution */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
+      <div className="g-main-side" style={{ gap: '16px' }}>
         <Card title="Portfolio: Planned vs Executed" subtitle="All accounts combined">
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={withData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
@@ -856,7 +907,7 @@ function EquityTab() {
       </div>
 
       {/* Account selector + individual chart */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
+      <div className="g-main-side" style={{ gap: '16px' }}>
         <Card
           title={`${selectedAccount || '—'}: Planned vs Executed`}
           subtitle="Select account below"
@@ -917,10 +968,10 @@ export default function DashboardPage() {
   const [tab, setTab] = useState<'overview' | 'plan' | 'monthly' | 'equity'>('overview')
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
 
       {/* Header */}
-      <div style={{
+      <div className="page-header" style={{
         padding: '20px 32px 0',
         borderBottom: '1px solid var(--border)',
         flexShrink: 0,
@@ -942,7 +993,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
+      <div className="page-body" style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
         {tab === 'overview' && <OverviewTab />}
         {tab === 'plan' && <PlanTab />}
         {tab === 'monthly' && <MonthlyDetailTab />}

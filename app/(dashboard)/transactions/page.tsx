@@ -589,7 +589,9 @@ export default function TransactionsPage() {
   const thStyle: React.CSSProperties = {
     position: 'sticky',
     top: 0,
-    background: 'var(--bg-base)',
+    // bg-elevated + shadow instead of bg-base, so the frozen header visibly
+    // separates from rows scrolling underneath rather than blending in.
+    background: 'var(--bg-elevated)',
     zIndex: 10,
     color: 'var(--text-secondary)',
     fontSize: '11px',
@@ -599,7 +601,8 @@ export default function TransactionsPage() {
     padding: '10px 10px 4px',
     textAlign: 'left',
     whiteSpace: 'nowrap',
-    borderBottom: '1px solid var(--border)',
+    borderBottom: '1px solid var(--border-strong)',
+    boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
   }
 
   return (
@@ -611,12 +614,7 @@ export default function TransactionsPage() {
         borderBottom: '1px solid var(--border)',
         flexShrink: 0,
       }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '12px',
-        }}>
+        <div className="header-row" style={{ marginBottom: '12px' }}>
           <div>
             <h1 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)' }}>
               Transactions
@@ -625,7 +623,7 @@ export default function TransactionsPage() {
               {monthLabel}
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div className="header-row-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <input
               ref={csvInputRef}
               type="file"
@@ -746,9 +744,7 @@ export default function TransactionsPage() {
       </div>
 
       {/* Summary bar */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr 1fr 1fr',
+      <div className="g-4" style={{
         gap: '0',
         borderBottom: '1px solid var(--border)',
         flexShrink: 0,
@@ -892,7 +888,7 @@ export default function TransactionsPage() {
 
       {/* Table */}
       <div style={{ flex: 1, overflow: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '1100px' }}>
+        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: '13px', minWidth: '1100px' }}>
           <thead>
             {/* Column headers */}
             <tr>
@@ -939,7 +935,8 @@ export default function TransactionsPage() {
               position: 'sticky',
               top: '37px',
               zIndex: 9,
-              background: 'var(--bg-base)',
+              background: 'var(--bg-elevated)',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
               borderBottom: '2px solid var(--border-strong)',
             }}>
               {[
@@ -1224,7 +1221,7 @@ export default function TransactionsPage() {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 1000, padding: '24px',
         }}>
-          <div style={{
+          <div className="modal-box" style={{
             background: 'var(--bg-surface)',
             border: '1px solid var(--border-strong)',
             borderRadius: '16px',
@@ -1362,7 +1359,7 @@ export default function TransactionsPage() {
             border: '1px solid var(--border-strong)',
             borderRadius: '16px',
             width: '100%', maxWidth: '900px',
-            maxHeight: '85vh',
+            maxHeight: '85dvh',
             display: 'flex', flexDirection: 'column',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           }}>
@@ -1421,7 +1418,7 @@ export default function TransactionsPage() {
                       {' \u00B7 '}{new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(Number(group.transactions[0].amount))}
                     </span>
                   </div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
                     <thead>
                       <tr>
                         {['ID', 'Date', 'Type', 'Category', 'Subcategory', 'Amount COP', 'USD', 'From', 'To'].map((h, i) => (

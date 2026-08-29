@@ -56,8 +56,150 @@ html, body {
   height: 100%;
   background: var(--bg-base);
   color: var(--text-primary);
+  /* The screen itself never pans sideways — like a native app, the frame is
+     fixed and only specific inner strips (a data table, a month tab bar)
+     scroll horizontally, each visibly contained in its own box. Without this,
+     setting overflow-y on a container makes its overflow-x compute to `auto`
+     too (per spec), so any content wider than the screen turned the WHOLE
+     page into a horizontal carousel — which is what made "+ New Transaction"
+     require dragging the screen sideways to reach. */
+  overflow-x: hidden;
 }
 
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: var(--bg-surface); }
 ::-webkit-scrollbar-thumb { background: var(--bg-elevated); border-radius: 2px; }
+
+/* ─── Responsive ──────────────────────────────────────────────────────────────
+   Phone is the only breakpoint that needs a different shell: at 375px the
+   160px sidebar ate 43% of the screen. Tablet (768px+) keeps the desktop
+   layout, which already holds up there.
+   Show/hide is done in CSS rather than JS so there's no flash of the wrong
+   navigation on first paint, and no server/client hydration mismatch. */
+.desktop-only { display: flex; }
+.mobile-only { display: none; }
+
+/* A page header is usually "title on the left, action buttons on the right,
+   never wrapping" — fine on a wide screen, but on a phone the buttons alone
+   are wider than the screen. This class doesn't change desktop at all; the
+   phone override below is what makes it wrap. */
+.header-row { display: flex; align-items: center; justify-content: space-between; }
+
+/* Grid utilities: desktop keeps the multi-column layout, phone collapses so
+   nothing is cut off at the right edge. Replaces inline gridTemplateColumns,
+   which cannot carry a media query. */
+.g-main-side { display: grid; grid-template-columns: 2fr 1fr; }
+.g-2         { display: grid; grid-template-columns: 1fr 1fr; }
+.g-3         { display: grid; grid-template-columns: repeat(3, 1fr); }
+.g-4         { display: grid; grid-template-columns: repeat(4, 1fr); }
+.g-5         { display: grid; grid-template-columns: repeat(5, 1fr); }
+
+@media (max-width: 767px) {
+  .desktop-only { display: none; }
+  .mobile-only { display: flex; }
+
+  /* Leave room for the fixed bottom tab bar (60px) plus a little breathing
+     room (16px) so the last row of content sits clearly above it rather than
+     flush against its edge, plus the iPhone home indicator. */
+  .app-main {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* A chart and its companion table stack instead of splitting an already
+     narrow screen; KPI rows wrap to 2 across rather than running off-screen.
+     !important because a few callers also set an inline gridTemplateColumns
+     (e.g. TransactionForm's from/to row, whose column count depends on which
+     fields are visible) — without it, that inline value would always win
+     over this class regardless of viewport, since a class selector never
+     outranks an inline style on its own. */
+  .g-main-side,
+  .g-2,
+  .g-3 { grid-template-columns: 1fr !important; }
+  .g-4,
+  .g-5 { grid-template-columns: repeat(2, 1fr) !important; }
+  /* The "Add Plan Item" month picker: full month names need more room per
+     cell than a 3-across grid gives in a ~340px modal, so mobile gets 2
+     across instead of collapsing all the way to 1 (which would make a
+     12-item checkbox grid needlessly tall). */
+  .g-months { grid-template-columns: repeat(2, 1fr) !important; }
+
+  /* Page chrome is tighter on a phone — 32px side padding wasted ~17% of a
+     375px screen. */
+  .page-header { padding: 16px 16px 0 !important; }
+  /* Most pages define their own `height: 100dvh` column with an inner
+     `flex:1, overflowY:'auto'` region instead of relying on layout's
+     .app-main — so .app-main's own bottom padding never reaches them, and
+     their last row of content (e.g. AI Import's "Continue" button) ends up
+     physically hidden behind the fixed bottom tab bar. Every such region
+     gets this same clearance via .page-body. */
+  .page-body {
+    padding: 16px 16px calc(76px + env(safe-area-inset-bottom, 0px)) 16px !important;
+    gap: 14px !important;
+  }
+
+  /* Reclaim the card's inner padding and tighten table cells so a 5-column
+     summary fits the screen instead of being clipped. Wider tables still
+     scroll sideways inside their own card, which is the right trade for a
+     comparison grid — but they now start from a much narrower baseline. */
+  .card-body { padding: 12px !important; }
+  .mini-table { font-size: 10px !important; }
+  .mini-table th,
+  .mini-table td { padding: 6px 5px !important; }
+
+  /* Title stays full-width on its own line; buttons wrap onto as many rows
+     as they need instead of running off the right edge. */
+  .header-row { flex-wrap: wrap; gap: 10px; }
+  .header-row > *:first-child { width: 100%; }
+  .header-row-actions { flex-wrap: wrap; }
+
+  /* Every modal/dialog in the app sets a fixed pixel width (400-520px) for
+     desktop — centered ones would overflow both edges equally on a 375px
+     screen (clipped by the page-wide overflow-x:hidden, so genuinely
+     unreachable, not just tight); TransactionForm's right-anchored drawer
+     would lose its entire left column off-screen instead. */
+  .modal-box {
+    width: calc(100% - 32px) !important;
+    max-width: 440px;
+  }
+  /* The drawer becomes a bottom sheet: inset from the top so it reads as a
+     panel over the page rather than a full takeover, and its action row is
+     lifted clear of the screen edge / iPhone home indicator, which made
+     Cancel and Save awkward to actually tap. */
+  .slide-panel {
+    width: 100% !important;
+    top: 28px !important;
+    height: calc(100dvh - 28px) !important;
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    border-left: none !important;
+    border-top: 1px solid var(--border-strong);
+  }
+  .slide-panel-footer {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  /* Reference tables that are mostly short values (dates, rates, a source
+     name) fit fine once the desktop's generous cell padding is reclaimed —
+     without it they squeeze until headers wrap mid-phrase ("Fetched / At"). */
+  .compact-table th,
+  .compact-table td { padding: 8px 6px !important; font-size: 10px !important; }
+  .compact-table th { white-space: nowrap; }
+
+  /* A table that fits once its numbers are abbreviated: drop the desktop
+     min-width that was forcing a horizontal scrollbar, and tighten cells so
+     every column stays on screen. The label column truncates rather than
+     wrapping, so rows stay one line tall. */
+  .fit-table { min-width: 0 !important; }
+  .fit-table th,
+  .fit-table td {
+    padding: 8px 4px !important;
+    font-size: 10px !important;
+  }
+  .fit-table th:first-child,
+  .fit-table td:first-child {
+    padding-left: 10px !important;
+    max-width: 118px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

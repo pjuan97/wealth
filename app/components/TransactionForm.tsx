@@ -327,20 +327,25 @@ export default function TransactionForm({
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop.
+          z-index note: the mobile bottom tab bar sits at 900, and every other
+          overlay in this app uses 1000. Tailwind's z-40/z-50 left this drawer
+          *underneath* the tab bar, which silently covered the Save/Cancel row
+          on phones — the buttons rendered but could not be tapped. */}
       <div
-        className="fixed inset-0 z-40"
-        style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(2px)' }}
+        className="fixed inset-0"
+        style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(2px)', zIndex: 1000 }}
         onClick={onClose}
       />
 
       {/* Panel */}
       <div
-        className="fixed right-0 top-0 h-full z-50 flex flex-col"
+        className="slide-panel fixed right-0 top-0 h-full flex flex-col"
         style={{
           width: '440px',
           background: 'var(--bg-surface)',
           borderLeft: '1px solid var(--border)',
+          zIndex: 1001,
         }}
       >
         {/* Header */}
@@ -414,7 +419,7 @@ export default function TransactionForm({
             </div>
 
             {/* Category row */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div className="g-2" style={{ gap: '12px' }}>
               <div>
                 <label style={labelStyle}>Level 1</label>
                 <input
@@ -463,7 +468,7 @@ export default function TransactionForm({
             <div style={{ borderTop: '1px solid var(--border)' }} />
 
             {/* Amount section */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div className="g-2" style={{ gap: '12px' }}>
               <div>
                 <label style={labelStyle}>USD Amount</label>
                 <input
@@ -509,7 +514,7 @@ export default function TransactionForm({
             <div style={{ borderTop: '1px solid var(--border)' }} />
 
             {/* Accounts — dynamic visibility */}
-            <div style={{ display: 'grid', gridTemplateColumns: currentRules.fromAccount !== 'hidden' && currentRules.toAccount !== 'hidden' ? '1fr 1fr' : '1fr', gap: '12px' }}>
+            <div className="g-2" style={{ gridTemplateColumns: currentRules.fromAccount !== 'hidden' && currentRules.toAccount !== 'hidden' ? '1fr 1fr' : '1fr', gap: '12px' }}>
               {currentRules.fromAccount !== 'hidden' && (
                 <div>
                   <label style={labelStyle}>
@@ -562,7 +567,7 @@ export default function TransactionForm({
 
         {/* Footer */}
         <div
-          className="px-6 py-4 flex flex-col gap-3 shrink-0"
+          className="slide-panel-footer px-6 py-4 flex flex-col gap-3 shrink-0"
           style={{ borderTop: '1px solid var(--border)' }}
         >
           {formError && (

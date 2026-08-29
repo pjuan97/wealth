@@ -187,20 +187,19 @@ export async function GET(request: NextRequest) {
         }),
       ])
 
-      // Each transaction lands in exactly one pool, chosen by the currency it
-      // was made in. A USD purchase also carries its COP equivalent, so putting
-      // it in both pools would double-count it against a plan.
+      // Aquí las dos bolsas SÍ se solapan a propósito, al revés que en los KPI
+      // de abajo. Cada fila de plan se compara contra una sola de las dos según
+      // su moneda, así que la de pesos tiene que llevar todo lo del mes valorado
+      // en pesos — incluidas las compras hechas en dólares con la tarjeta, que
+      // si no dejarían de contar contra un presupuesto en pesos.
       const copExecMap = new Map<string, number>()
       const usdExecMap = new Map<string, number>()
       for (const tx of transactions) {
         const key = `${tx.level_2}||${tx.level_3 || ''}`
-        if (tx.usd_amount !== null) {
-          const usdVal = Number(tx.usd_amount) || 0
-          if (usdVal !== 0) usdExecMap.set(key, (usdExecMap.get(key) || 0) + usdVal)
-        } else {
-          const copVal = Number(tx.amount) || 0
-          if (copVal !== 0) copExecMap.set(key, (copExecMap.get(key) || 0) + copVal)
-        }
+        const copVal = Number(tx.amount) || 0
+        const usdVal = Number(tx.usd_amount) || 0
+        if (copVal !== 0) copExecMap.set(key, (copExecMap.get(key) || 0) + copVal)
+        if (usdVal !== 0) usdExecMap.set(key, (usdExecMap.get(key) || 0) + usdVal)
       }
 
       const rows = plans.map(p => {
@@ -219,11 +218,19 @@ export async function GET(request: NextRequest) {
       })
 
       // KPIs split into both pools — the client merges them into its chosen
-      // display currency using this month's own TRM.
-      const incomeCOP = transactions.filter(t => t.event_type === 'Income').reduce((s, t) => s + (Number(t.amount) || 0), 0)
-      const incomeUSD = transactions.filter(t => t.event_type === 'Income').reduce((s, t) => s + (Number(t.usd_amount) || 0), 0)
-      const expenseCOP = transactions.filter(t => t.event_type === 'Expense').reduce((s, t) => s + (Number(t.amount) || 0), 0)
-      const expenseUSD = transactions.filter(t => t.event_type === 'Expense').reduce((s, t) => s + (Number(t.usd_amount) || 0), 0)
+      // display currency using this month's own TRM. As with the maps above,
+      // each transaction counts in ONE pool: a USD purchase also stores its COP
+      // equivalent, and adding it to both would double the month's totals.
+      const sumaPorMoneda = (tipo: 'Income' | 'Expense', moneda: 'COP' | 'USD') =>
+        transactions
+          .filter(t => t.event_type === tipo)
+          .filter(t => (t.usd_amount !== null ? moneda === 'USD' : moneda === 'COP'))
+          .reduce((s, t) => s + (Number(moneda === 'USD' ? t.usd_amount : t.amount) || 0), 0)
+
+      const incomeCOP = sumaPorMoneda('Income', 'COP')
+      const incomeUSD = sumaPorMoneda('Income', 'USD')
+      const expenseCOP = sumaPorMoneda('Expense', 'COP')
+      const expenseUSD = sumaPorMoneda('Expense', 'USD')
 
       return NextResponse.json({
         rows, kpis: { incomeCOP, incomeUSD, expenseCOP, expenseUSD, month },

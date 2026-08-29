@@ -25,20 +25,27 @@ async function getAccountBalance(
   const monthEnd = new Date(`${upToMonth}-01`)
   monthEnd.setMonth(monthEnd.getMonth() + 1)
 
-  const [inflow, outflow] = await Promise.all([
-    prisma.transaction.aggregate({
-      where: { user_id: userId, to_account: { in: accounts }, date: { lt: monthEnd } },
-      _sum: { amount: true, usd_amount: true },
-    }),
-    prisma.transaction.aggregate({
-      where: { user_id: userId, from_account: { in: accounts }, date: { lt: monthEnd } },
-      _sum: { amount: true, usd_amount: true },
-    }),
-  ])
+  // Cada movimiento cuenta en UNA sola bolsa, la de la moneda en que se hizo:
+  // una compra en dólares guarda también su equivalente en pesos, y el cliente
+  // suma las dos bolsas, así que ponerla en ambas duplicaría el saldo.
+  const lado = async (dir: 'to_account' | 'from_account') => {
+    const [enPesos, enDolares] = await Promise.all([
+      prisma.transaction.aggregate({
+        where: { user_id: userId, [dir]: { in: accounts }, date: { lt: monthEnd }, usd_amount: null },
+        _sum: { amount: true },
+      }),
+      prisma.transaction.aggregate({
+        where: { user_id: userId, [dir]: { in: accounts }, date: { lt: monthEnd }, usd_amount: { not: null } },
+        _sum: { usd_amount: true },
+      }),
+    ])
+    return { cop: Number(enPesos._sum.amount || 0), usd: Number(enDolares._sum.usd_amount || 0) }
+  }
+  const [inflow, outflow] = await Promise.all([lado('to_account'), lado('from_account')])
 
   return {
-    cop: Number(inflow._sum.amount || 0) - Number(outflow._sum.amount || 0),
-    usd: Number(inflow._sum.usd_amount || 0) - Number(outflow._sum.usd_amount || 0),
+    cop: inflow.cop - outflow.cop,
+    usd: inflow.usd - outflow.usd,
   }
 }
 
@@ -55,15 +62,18 @@ async function getMonthExecuted(monthLabel: string, userId: number) {
     select: { event_type: true, level_2: true, level_3: true, amount: true, usd_amount: true },
   })
 
+  // Igual que arriba: un movimiento pertenece a la bolsa de su propia moneda,
+  // nunca a las dos.
   const build = (field: 'amount' | 'usd_amount') => {
-    const incomeExec = txs
+    const propios = txs.filter(t => (t.usd_amount !== null ? field === 'usd_amount' : field === 'amount'))
+    const incomeExec = propios
       .filter(t => t.event_type === 'Income')
       .reduce((s, t) => s + Number(t[field] || 0), 0)
-    const expenseExec = txs
+    const expenseExec = propios
       .filter(t => t.event_type === 'Expense')
       .reduce((s, t) => s + Number(t[field] || 0), 0)
     const byCategory: Record<string, number> = {}
-    for (const tx of txs) {
+    for (const tx of propios) {
       const val = Number(tx[field] || 0)
       if (val === 0) continue
       const key = `${tx.level_2}||${tx.level_3 || ''}`

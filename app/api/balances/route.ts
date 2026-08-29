@@ -2,6 +2,63 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyRequestSession } from '@/lib/auth'
 
+/**
+ * An account holds dollars when every movement through it is recorded in
+ * dollars — as with Dollar App, where the salary lands in USDc. An account that
+ * has any peso-only line (a bank account, or a card that charges in both) holds
+ * pesos, even if some of its lines also note a dollar figure: those pesos
+ * already landed and do not get revalued.
+ */
+async function isDollarAccount(userId: number, account: string): Promise<boolean> {
+  const [total, copOnly] = await Promise.all([
+    prisma.transaction.count({
+      where: { user_id: userId, OR: [{ to_account: account }, { from_account: account }] },
+    }),
+    prisma.transaction.count({
+      where: {
+        user_id: userId,
+        usd_amount: null,
+        OR: [{ to_account: account }, { from_account: account }],
+      },
+    }),
+  ])
+  return total > 0 && copOnly === 0
+}
+
+/**
+ * Balance of one account, in both currencies.
+ *
+ * A dollar account is valued at TODAY's rate rather than at the rate of the day
+ * each movement happened: the question a balance answers is "how much do I have
+ * right now", and a dollar held since January is worth today's rate, not
+ * January's.
+ */
+async function accountBalance(
+  userId: number,
+  account: string,
+  currentFX: number,
+  upTo?: Date
+): Promise<{ cop: number; usd: number }> {
+  const dateFilter = upTo ? { date: { lt: upTo } } : {}
+  const enDolares = await isDollarAccount(userId, account)
+  const field = enDolares ? 'usd_amount' : 'amount'
+  const [inflow, outflow] = await Promise.all([
+    prisma.transaction.aggregate({
+      where: { user_id: userId, to_account: account, ...dateFilter },
+      _sum: { amount: true, usd_amount: true },
+    }),
+    prisma.transaction.aggregate({
+      where: { user_id: userId, from_account: account, ...dateFilter },
+      _sum: { amount: true, usd_amount: true },
+    }),
+  ])
+  const net = (x: typeof inflow) => Number((field === 'usd_amount' ? x._sum.usd_amount : x._sum.amount) || 0)
+  const balance = net(inflow) - net(outflow)
+  return enDolares
+    ? { cop: balance * currentFX, usd: balance }
+    : { cop: balance, usd: balance / currentFX }
+}
+
 export async function GET(request: NextRequest) {
   const session = await verifyRequestSession(request)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -30,26 +87,12 @@ export async function GET(request: NextRequest) {
     const cashBalances: Array<{ name: string; type: string; balance: number; balanceUsd: number }> = []
 
     for (const account of cashAccounts) {
-      const [inflow, outflow] = await Promise.all([
-        prisma.transaction.aggregate({
-          where: { user_id: userId, to_account: account },
-          _sum: { amount: true, usd_amount: true },
-        }),
-        prisma.transaction.aggregate({
-          where: { user_id: userId, from_account: account },
-          _sum: { amount: true, usd_amount: true },
-        }),
-      ])
-      const balance = Number(inflow._sum.amount || 0) - Number(outflow._sum.amount || 0)
-      // A USD-native account (its transactions carry real usd_amount, like Dani's)
-      // gets its real dollar balance; an FX-derived estimate is only a fallback
-      // for accounts that never record usd_amount at all.
-      const balanceUsdNative = Number(inflow._sum.usd_amount || 0) - Number(outflow._sum.usd_amount || 0)
+      const { cop, usd } = await accountBalance(userId, account, currentFX)
       cashBalances.push({
         name: account,
         type: 'cash',
-        balance,
-        balanceUsd: balanceUsdNative !== 0 ? balanceUsdNative : balance / currentFX,
+        balance: cop,
+        balanceUsd: usd,
       })
     }
 
@@ -129,25 +172,16 @@ export async function GET(request: NextRequest) {
     const debtBalances: Array<{ name: string; type: string; balance: number; balanceUsd: number }> = []
 
     for (const account of debtAccounts) {
-      // Debt: money that came FROM the account (was spent) minus payments TO the account
-      const [charged, paid] = await Promise.all([
-        prisma.transaction.aggregate({
-          where: { user_id: userId, from_account: account },
-          _sum: { amount: true, usd_amount: true },
-        }),
-        prisma.transaction.aggregate({
-          where: { user_id: userId, to_account: account },
-          _sum: { amount: true, usd_amount: true },
-        }),
-      ])
-      // Outstanding debt = what was charged - what was paid
-      const debt = Number(charged._sum.amount || 0) - Number(paid._sum.amount || 0)
-      const debtUsdNative = Number(charged._sum.usd_amount || 0) - Number(paid._sum.usd_amount || 0)
+      // Debt runs the other way round: charges leave the card, payments come in,
+      // so what is still owed is the negative of the account's balance.
+      const { cop, usd } = await accountBalance(userId, account, currentFX)
+      const debt = -cop
+      const debtUsd = -usd
       debtBalances.push({
         name: account,
         type: 'debt',
         balance: debt > 0 ? -debt : 0, // negative = liability
-        balanceUsd: debtUsdNative > 0 ? -debtUsdNative : (debt > 0 ? -(debt / currentFX) : 0),
+        balanceUsd: debt > 0 ? -debtUsd : 0,
       })
     }
 
@@ -182,17 +216,7 @@ export async function GET(request: NextRequest) {
         // Cash balances up to end of month
         let cashTotal = 0
         for (const account of cashAccounts) {
-          const [inflow, outflow] = await Promise.all([
-            prisma.transaction.aggregate({
-              where: { user_id: userId, to_account: account, date: { lt: monthEnd } },
-              _sum: { amount: true },
-            }),
-            prisma.transaction.aggregate({
-              where: { user_id: userId, from_account: account, date: { lt: monthEnd } },
-              _sum: { amount: true },
-            }),
-          ])
-          cashTotal += Number(inflow._sum.amount || 0) - Number(outflow._sum.amount || 0)
+          cashTotal += (await accountBalance(userId, account, currentFX, monthEnd)).cop
         }
 
         // Investment balances: use market_value_end for this month if available
@@ -221,17 +245,7 @@ export async function GET(request: NextRequest) {
         // Debt balances up to end of month
         let debtTotal = 0
         for (const account of debtAccounts) {
-          const [charged, paid] = await Promise.all([
-            prisma.transaction.aggregate({
-              where: { user_id: userId, from_account: account, date: { lt: monthEnd } },
-              _sum: { amount: true },
-            }),
-            prisma.transaction.aggregate({
-              where: { user_id: userId, to_account: account, date: { lt: monthEnd } },
-              _sum: { amount: true },
-            }),
-          ])
-          debtTotal += Math.max(0, Number(charged._sum.amount || 0) - Number(paid._sum.amount || 0))
+          debtTotal += Math.max(0, -(await accountBalance(userId, account, currentFX, monthEnd)).cop)
         }
 
         return {

@@ -7,7 +7,12 @@ function annualToMonthly(annual: number): number {
   return Math.pow(1 + annual, 1 / 12) - 1
 }
 
-// Get net flow from transactions for a given account + month
+// Get net flow from transactions for a given account + month.
+//
+// Transactions point at a platform, never at one of its equity_types, so when a
+// platform has several the flow cannot be split between them. It is credited to
+// a single type — the first in alphabetical order — instead of being counted
+// once per type, which would inflate the whole portfolio.
 async function getNetFlow(account: string, monthLabel: string, userId: number): Promise<number> {
   // Get ALL transactions that involve this account in any direction
   const txs = await prisma.transaction.findMany({
@@ -51,6 +56,7 @@ async function getNetFlow(account: string, monthLabel: string, userId: number): 
 // Get start balance for a month: Cierre Real of previous month, else base_equity
 async function getStartBalance(
   account: string,
+  equityType: string,
   monthLabel: string,
   baseEquity: number,
   userId: number
@@ -61,7 +67,7 @@ async function getStartBalance(
     : `${year}-${String(month - 1).padStart(2, '0')}`
 
   const prev = await prisma.equityExecuted.findFirst({
-    where: { user_id: userId, platform: account, month_label: prevMonth },
+    where: { user_id: userId, platform: account, equity_type: equityType, month_label: prevMonth },
   })
 
   if (prev?.market_value_end) return Number(prev.market_value_end)
@@ -93,19 +99,30 @@ export async function GET(request: NextRequest) {
       ])
 
       const months = [...new Set(forecasts.map(f => f.month_label))].sort()
-      const accounts = [...new Set(forecasts.map(f => f.account))].sort()
+      // Una plataforma puede tener varios bolsillos (ETFs, Companies...), y cada
+      // uno lleva su propio cierre. Agrupar solo por plataforma hacía que todos
+      // leyeran el mismo valor y el total los contara varias veces.
+      const accounts = [...new Set(forecasts.map(f => `${f.account}||${f.equity_type}`))].sort()
+      const tipoPrincipal = new Map<string, string>()
+      for (const key of accounts) {
+        const [acct, tipo] = key.split('||')
+        if (!tipoPrincipal.has(acct)) tipoPrincipal.set(acct, tipo)
+      }
 
-      const matrix = await Promise.all(accounts.map(async account => {
+      const matrix = await Promise.all(accounts.map(async key => {
+        const [account, equityType] = key.split('||')
         const monthData = await Promise.all(months.map(async m => {
-          const forecast = forecasts.find(f => f.account === account && f.month_label === m)
-          const exec = executed.find(e => e.platform === account && e.month_label === m)
+          const forecast = forecasts.find(f => f.account === account && f.equity_type === equityType && f.month_label === m)
+          const exec = executed.find(e => e.platform === account && e.equity_type === equityType && e.month_label === m)
 
           if (!forecast) return { month: m, projected_end: null, market_value_end: null, market_variance: null, start_balance: null, expected_end: null }
 
           const annual_rate = Number(forecast.annual_rate)
           const monthly_rate = annualToMonthly(annual_rate)
-          const start_balance = await getStartBalance(account, m, Number(forecast.base_equity), userId)
-          const net_flow = await getNetFlow(account, m, userId)
+          const start_balance = await getStartBalance(account, equityType, m, Number(forecast.base_equity), userId)
+          const net_flow = tipoPrincipal.get(account) === equityType
+            ? await getNetFlow(account, m, userId)
+            : 0
           const expected_end = Math.round(start_balance * (1 + monthly_rate) + net_flow)
           const market_value_end = exec?.market_value_end ? Number(exec.market_value_end) : null
           const market_variance = market_value_end !== null ? market_value_end - expected_end : null
@@ -120,11 +137,7 @@ export async function GET(request: NextRequest) {
           }
         }))
 
-        return {
-          account,
-          equity_type: forecasts.find(f => f.account === account)?.equity_type || '',
-          months: monthData,
-        }
+        return { account, equity_type: equityType, months: monthData }
       }))
 
       const portfolioByMonth = months.map(m => {
@@ -162,12 +175,19 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
+    const tipoPrincipal = new Map<string, string>()
+    for (const f of [...forecasts].sort((a, b) => a.equity_type.localeCompare(b.equity_type))) {
+      if (!tipoPrincipal.has(f.account)) tipoPrincipal.set(f.account, f.equity_type)
+    }
+
     const rows = await Promise.all(forecasts.map(async f => {
-      const exec = executed.find(e => e.platform === f.account)
+      const exec = executed.find(e => e.platform === f.account && e.equity_type === f.equity_type)
       const annual_rate = Number(f.annual_rate)
       const monthly_rate = annualToMonthly(annual_rate)
-      const start_balance = await getStartBalance(f.account, targetMonth, Number(f.base_equity), userId)
-      const net_flow = await getNetFlow(f.account, targetMonth, userId)
+      const start_balance = await getStartBalance(f.account, f.equity_type, targetMonth, Number(f.base_equity), userId)
+      const net_flow = tipoPrincipal.get(f.account) === f.equity_type
+        ? await getNetFlow(f.account, targetMonth, userId)
+        : 0
       const expected_end = Math.round(start_balance * (1 + monthly_rate) + net_flow)
       // If manual value exists, use it; otherwise estimate from formula
       const manual_value = exec?.market_value_end

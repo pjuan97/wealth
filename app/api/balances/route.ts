@@ -1,63 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyRequestSession } from '@/lib/auth'
-
-/**
- * An account holds dollars when every movement through it is recorded in
- * dollars — as with Dollar App, where the salary lands in USDc. An account that
- * has any peso-only line (a bank account, or a card that charges in both) holds
- * pesos, even if some of its lines also note a dollar figure: those pesos
- * already landed and do not get revalued.
- */
-async function isDollarAccount(userId: number, account: string): Promise<boolean> {
-  const [total, copOnly] = await Promise.all([
-    prisma.transaction.count({
-      where: { user_id: userId, OR: [{ to_account: account }, { from_account: account }] },
-    }),
-    prisma.transaction.count({
-      where: {
-        user_id: userId,
-        usd_amount: null,
-        OR: [{ to_account: account }, { from_account: account }],
-      },
-    }),
-  ])
-  return total > 0 && copOnly === 0
-}
-
-/**
- * Balance of one account, in both currencies.
- *
- * A dollar account is valued at TODAY's rate rather than at the rate of the day
- * each movement happened: the question a balance answers is "how much do I have
- * right now", and a dollar held since January is worth today's rate, not
- * January's.
- */
-async function accountBalance(
-  userId: number,
-  account: string,
-  currentFX: number,
-  upTo?: Date
-): Promise<{ cop: number; usd: number }> {
-  const dateFilter = upTo ? { date: { lt: upTo } } : {}
-  const enDolares = await isDollarAccount(userId, account)
-  const field = enDolares ? 'usd_amount' : 'amount'
-  const [inflow, outflow] = await Promise.all([
-    prisma.transaction.aggregate({
-      where: { user_id: userId, to_account: account, ...dateFilter },
-      _sum: { amount: true, usd_amount: true },
-    }),
-    prisma.transaction.aggregate({
-      where: { user_id: userId, from_account: account, ...dateFilter },
-      _sum: { amount: true, usd_amount: true },
-    }),
-  ])
-  const net = (x: typeof inflow) => Number((field === 'usd_amount' ? x._sum.usd_amount : x._sum.amount) || 0)
-  const balance = net(inflow) - net(outflow)
-  return enDolares
-    ? { cop: balance * currentFX, usd: balance }
-    : { cop: balance, usd: balance / currentFX }
-}
+import { accountBalance } from '@/lib/accountBalance'
 
 export async function GET(request: NextRequest) {
   const session = await verifyRequestSession(request)

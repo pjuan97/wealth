@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyRequestSession } from '@/lib/auth'
+import { accountBalance, totalInvestments } from '@/lib/accountBalance'
 
 const MONTHS = [
   '2026-01','2026-02','2026-03','2026-04','2026-05','2026-06',
@@ -77,35 +78,28 @@ export async function GET(request: NextRequest) {
         return { month: m, label: MONTH_SHORT[m], byLevel2 }
       })
 
-      const latestEquity = await prisma.equityExecuted.findMany({
-        where: { user_id: userId, market_value_end: { not: null } },
-        orderBy: { month_label: 'desc' },
-      })
-      const equityMap = new Map<string, number>()
-      for (const e of latestEquity) {
-        if (!equityMap.has(e.platform)) equityMap.set(e.platform, Number(e.market_value_end))
-      }
-      const totalEquity = Array.from(equityMap.values()).reduce((s, v) => s + v, 0)
+      const totalEquity = await totalInvestments(userId)
 
-      // Cash balance — from this user's own active cash accounts, not a hardcoded name.
-      const cashAccountDefs = await prisma.accountDef.findMany({
-        where: { user_id: userId, type: 'cash', is_active: true },
-        select: { name: true },
+      // Cash and debt come from this user's own active accounts, never a
+      // hardcoded name. Both go through the same helper as /api/balances so the
+      // two pages cannot drift apart: dollar accounts are valued at today's
+      // rate, and what is owed is subtracted rather than ignored.
+      const fxRow = await prisma.dailyFxRate.findFirst({
+        where: { currency: 'USD' },
+        orderBy: { date: 'desc' },
       })
-      const cashAccountNames = cashAccountDefs.map(a => a.name)
+      const currentFX = fxRow ? Number(fxRow.rate_to_cop) : 3672
+
+      const accountDefs = await prisma.accountDef.findMany({
+        where: { user_id: userId, is_active: true, type: { in: ['cash', 'debt'] } },
+        select: { name: true, type: true },
+      })
       let cashBalance = 0
-      if (cashAccountNames.length) {
-        const [inflow, outflow] = await Promise.all([
-          prisma.transaction.aggregate({
-            where: { user_id: userId, to_account: { in: cashAccountNames } },
-            _sum: { amount: true },
-          }),
-          prisma.transaction.aggregate({
-            where: { user_id: userId, from_account: { in: cashAccountNames } },
-            _sum: { amount: true },
-          }),
-        ])
-        cashBalance = Number(inflow._sum.amount || 0) - Number(outflow._sum.amount || 0)
+      let totalDebt = 0
+      for (const a of accountDefs) {
+        const { cop } = await accountBalance(userId, a.name, currentFX)
+        if (a.type === 'cash') cashBalance += cop
+        else totalDebt += Math.max(0, -cop)
       }
 
       return NextResponse.json({
@@ -115,7 +109,7 @@ export async function GET(request: NextRequest) {
         incomeBySource,
         expenseByCategory,
         expenseCategories,
-        netWorth: totalEquity + cashBalance, cashBalance, totalEquity,
+        netWorth: totalEquity + cashBalance - totalDebt, cashBalance, totalEquity, totalDebt,
       })
     }
 
@@ -140,8 +134,15 @@ export async function GET(request: NextRequest) {
         const mTxs = transactions.filter(t => t.month_label === m)
         const sumPlan = (eventType: string, currency: 'COP' | 'USD') =>
           mPlans.filter(p => p.event_type === eventType && p.currency === currency).reduce((s, p) => s + Number(p.plan), 0)
+        // Each transaction belongs to exactly ONE pool, decided by the currency
+        // it was actually made in. A USD purchase also stores its COP
+        // equivalent, so counting it in both pools would make the client — which
+        // converts and adds the two — report roughly double the real figure.
         const sumExec = (eventType: string, field: 'amount' | 'usd_amount') =>
-          mTxs.filter(t => t.event_type === eventType).reduce((s, t) => s + (Number(t[field]) || 0), 0)
+          mTxs
+            .filter(t => t.event_type === eventType)
+            .filter(t => (t.usd_amount !== null ? field === 'usd_amount' : field === 'amount'))
+            .reduce((s, t) => s + (Number(t[field]) || 0), 0)
         return {
           month: m, label: MONTH_SHORT[m],
           incomePlanCOP: sumPlan('Income', 'COP'), incomePlanUSD: sumPlan('Income', 'USD'),
@@ -186,17 +187,20 @@ export async function GET(request: NextRequest) {
         }),
       ])
 
-      // Each category's transactions are summed per-field independently — a
-      // transaction can carry both `amount` (COP) and `usd_amount` at once,
-      // so the COP pool and USD pool are not mutually exclusive.
+      // Each transaction lands in exactly one pool, chosen by the currency it
+      // was made in. A USD purchase also carries its COP equivalent, so putting
+      // it in both pools would double-count it against a plan.
       const copExecMap = new Map<string, number>()
       const usdExecMap = new Map<string, number>()
       for (const tx of transactions) {
         const key = `${tx.level_2}||${tx.level_3 || ''}`
-        const copVal = Number(tx.amount) || 0
-        const usdVal = Number(tx.usd_amount) || 0
-        if (copVal !== 0) copExecMap.set(key, (copExecMap.get(key) || 0) + copVal)
-        if (usdVal !== 0) usdExecMap.set(key, (usdExecMap.get(key) || 0) + usdVal)
+        if (tx.usd_amount !== null) {
+          const usdVal = Number(tx.usd_amount) || 0
+          if (usdVal !== 0) usdExecMap.set(key, (usdExecMap.get(key) || 0) + usdVal)
+        } else {
+          const copVal = Number(tx.amount) || 0
+          if (copVal !== 0) copExecMap.set(key, (copExecMap.get(key) || 0) + copVal)
+        }
       }
 
       const rows = plans.map(p => {

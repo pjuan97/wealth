@@ -149,24 +149,27 @@ export async function PATCH(request: NextRequest) {
       const updated = await prisma.categoryDef.update({ where: { id }, data })
 
       if (propagate) {
-        const updates: Promise<unknown>[] = []
-        if (data.level_2 && oldName?.level_2 !== data.level_2) {
-          updates.push(
-            prisma.transaction.updateMany({
-              where: { user_id: userId, level_2: oldName.level_2 },
-              data: { level_2: data.level_2 },
-            })
-          )
+        // Una fila del catálogo es el PAR level_2 + level_3, y así es como se
+        // cuenta el uso antes de preguntar. La propagación tiene que apuntar al
+        // mismo par: si solo se filtrara por uno de los dos niveles, se tocarían
+        // transacciones que el conteo nunca incluyó — el modal diría "3
+        // transacciones" y se actualizarían cuarenta.
+        const cambios: { level_2?: string; level_3?: string | null } = {}
+        if (data.level_2 && oldName?.level_2 !== data.level_2) cambios.level_2 = data.level_2
+        if (oldName && 'level_3' in data && (oldName.level_3 ?? null) !== (data.level_3 ?? null)) {
+          cambios.level_3 = data.level_3 ?? null
         }
-        if (data.level_3 && oldName?.level_3 !== data.level_3) {
-          updates.push(
-            prisma.transaction.updateMany({
-              where: { user_id: userId, level_3: oldName.level_3 },
-              data: { level_3: data.level_3 },
-            })
-          )
+
+        if (Object.keys(cambios).length > 0) {
+          await prisma.transaction.updateMany({
+            where: {
+              user_id: userId,
+              level_2: oldName.level_2,
+              level_3: oldName.level_3 ?? null,
+            },
+            data: cambios,
+          })
         }
-        await Promise.all(updates)
       }
       return NextResponse.json(updated)
     }

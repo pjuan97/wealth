@@ -94,7 +94,7 @@ function PropagateModal({
           {title}
         </h3>
         <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-          Este nombre est\u00e1 en uso en:
+          Este nombre está en uso en:
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '24px' }}>
           {usage.transactions > 0 && (
@@ -124,7 +124,7 @@ function PropagateModal({
           </div>
         </div>
         <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '20px' }}>
-          \u00bfQuieres actualizar todos los registros existentes con el nuevo nombre?
+          ¿Quieres actualizar todos los registros existentes con el nuevo nombre?
         </p>
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
           <button onClick={onCancel} style={{
@@ -256,6 +256,9 @@ export default function DataSourcePage() {
 
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editValue, setEditValue] = useState('')
+  // Las categorías tienen dos niveles editables; las cuentas y los tipos de
+  // evento solo usan editValue.
+  const [editLevel3, setEditLevel3] = useState('')
 
   const [showAdd, setShowAdd] = useState(false)
   const [newAccount, setNewAccount] = useState({ name: '', type: 'cash', equity_type: '', start_month: '2026-01' })
@@ -266,7 +269,9 @@ export default function DataSourcePage() {
     type: string
     id: number
     newName: string
+    newLevel3?: string | null
     oldName: string
+    oldLevel3?: string | null
     usage: UsageInfo
   } | null>(null)
 
@@ -309,7 +314,8 @@ export default function DataSourcePage() {
     id: number,
     oldName: string,
     newName: string,
-    extra?: { level_2?: string; level_3?: string | null }
+    extra?: { level_2?: string; level_3?: string | null },
+    newLevel3?: string | null
   ) => {
     const param = type === 'category'
       ? `${extra?.level_2 || oldName}||${extra?.level_3 || ''}`
@@ -319,9 +325,9 @@ export default function DataSourcePage() {
     const usage: UsageInfo = await res.json()
 
     if (usage.total > 0) {
-      setPropagateModal({ type, id, newName, oldName, usage })
+      setPropagateModal({ type, id, newName, newLevel3, oldName, oldLevel3: extra?.level_3 ?? null, usage })
     } else {
-      await doUpdate(type, id, newName, false, oldName)
+      await doUpdate(type, id, newName, false, oldName, newLevel3, extra?.level_3 ?? null)
     }
   }
 
@@ -331,13 +337,21 @@ export default function DataSourcePage() {
     newName: string,
     propagate: boolean,
     oldName: string,
+    newLevel3?: string | null,
+    oldLevel3?: string | null,
   ) => {
     setSaving(true)
     try {
       const body = type === 'account'
         ? { type, id, data: { name: newName }, propagate, oldName, newName }
         : type === 'category'
-        ? { type, id, data: { level_2: newName }, propagate, oldName: { level_2: oldName }, newName }
+        ? {
+            type, id,
+            data: { level_2: newName, level_3: newLevel3 || null },
+            propagate,
+            oldName: { level_2: oldName, level_3: oldLevel3 ?? null },
+            newName,
+          }
         : { type, id, data: { name: newName } }
 
       await fetch('/api/data-source', {
@@ -350,6 +364,28 @@ export default function DataSourcePage() {
       await load()
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
+  }
+
+  /**
+   * Guarda una categoría con sus dos niveles.
+   *
+   * Se edita con un botón explícito y no al salir del campo: son dos campos, y
+   * pasar del Level 2 al Level 3 dispararía un guardado a medias.
+   */
+  const guardarCategoria = async (cat: CategoryDef) => {
+    const nuevoL2 = editValue.trim()
+    const nuevoL3 = editLevel3.trim()
+    const l3Actual = cat.level_3 || ''
+    if (!nuevoL2) return                                   // el Level 2 es obligatorio
+    if (nuevoL2 === cat.level_2 && nuevoL3 === l3Actual) { // nada que guardar
+      setEditingId(null)
+      return
+    }
+    await checkUsageAndEdit(
+      'category', cat.id, cat.level_2, nuevoL2,
+      { level_2: cat.level_2, level_3: cat.level_3 },
+      nuevoL3 || null,
+    )
   }
 
   // Permanently delete an account/category/eventType. Checks usage first —
@@ -561,7 +597,7 @@ export default function DataSourcePage() {
           title={`Rename "${propagateModal.oldName}"`}
           usage={propagateModal.usage}
           onConfirm={(propagate) =>
-            doUpdate(propagateModal.type, propagateModal.id, propagateModal.newName, propagate, propagateModal.oldName)
+            doUpdate(propagateModal.type, propagateModal.id, propagateModal.newName, propagate, propagateModal.oldName, propagateModal.newLevel3, propagateModal.oldLevel3)
           }
           onCancel={() => setPropagateModal(null)}
         />
@@ -840,7 +876,7 @@ export default function DataSourcePage() {
 
         {loading ? (
           <div style={{ padding: '60px', textAlign: 'center' }}>
-            <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Loading\u2026</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Loading…</p>
           </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
@@ -983,12 +1019,8 @@ export default function DataSourcePage() {
                             value={editValue}
                             onChange={e => setEditValue(e.target.value)}
                             onKeyDown={async e => {
-                              if (e.key === 'Enter') await checkUsageAndEdit('category', cat.id, cat.level_2, editValue, { level_2: cat.level_2, level_3: cat.level_3 })
+                              if (e.key === 'Enter') await guardarCategoria(cat)
                               if (e.key === 'Escape') setEditingId(null)
-                            }}
-                            onBlur={async () => {
-                              if (editValue !== cat.level_2) await checkUsageAndEdit('category', cat.id, cat.level_2, editValue, { level_2: cat.level_2, level_3: cat.level_3 })
-                              else setEditingId(null)
                             }}
                           />
                         ) : (
@@ -996,15 +1028,43 @@ export default function DataSourcePage() {
                         )}
                       </td>
                       <td style={{ ...tdStyle, color: 'var(--text-secondary)' }}>
-                        {cat.level_3 || <span style={{ color: 'var(--text-muted)' }}>\u2014</span>}
+                        {editingId === cat.id ? (
+                          <input
+                            style={{ ...inputStyle, width: '180px' }}
+                            placeholder="sin subcategoría"
+                            value={editLevel3}
+                            onChange={e => setEditLevel3(e.target.value)}
+                            onKeyDown={async e => {
+                              if (e.key === 'Enter') await guardarCategoria(cat)
+                              if (e.key === 'Escape') setEditingId(null)
+                            }}
+                          />
+                        ) : (
+                          cat.level_3 || <span style={{ color: 'var(--text-muted)' }}>—</span>
+                        )}
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'right', paddingRight: '32px' }}>
                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                          <button onClick={() => { setEditingId(cat.id); setEditValue(cat.level_2) }} style={{
+                          {editingId === cat.id ? (
+                            <>
+                              <button onClick={() => guardarCategoria(cat)} style={{
+                                padding: '4px 12px', borderRadius: '6px', fontSize: '12px',
+                                background: 'var(--accent)', border: '1px solid var(--accent)',
+                                color: '#fff', cursor: 'pointer',
+                              }}>Save</button>
+                              <button onClick={() => setEditingId(null)} style={{
+                                padding: '4px 12px', borderRadius: '6px', fontSize: '12px',
+                                background: 'transparent', border: '1px solid var(--border-strong)',
+                                color: 'var(--text-secondary)', cursor: 'pointer',
+                              }}>Cancel</button>
+                            </>
+                          ) : (
+                          <button onClick={() => { setEditingId(cat.id); setEditValue(cat.level_2); setEditLevel3(cat.level_3 || '') }} style={{
                             padding: '4px 12px', borderRadius: '6px', fontSize: '12px',
                             background: 'transparent', border: '1px solid var(--border-strong)',
                             color: 'var(--text-secondary)', cursor: 'pointer',
                           }}>Edit</button>
+                          )}
                           <button
                             onClick={() => handleDeleteClick('category', cat.id, cat.level_2, { level_2: cat.level_2, level_3: cat.level_3 })}
                             style={{

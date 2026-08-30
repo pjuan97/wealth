@@ -187,7 +187,7 @@ function InlineEditCell({
         onBlur={handleSave}
         style={{ ...baseStyle, cursor: 'pointer' }}
       >
-        <option value="">\u2014</option>
+        <option value="">—</option>
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
     )

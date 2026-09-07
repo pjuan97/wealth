@@ -134,14 +134,14 @@ DATABASE_URL="postgresql://wealth_user:wealth_pass@localhost:5435/wealth_db"
 JWT_SECRET="your-secret-key-here"
 ```
 
-## Demo Credentials
+## Seed Users
 
-After running the seed:
+The seed creates two accounts, `juan@wealth.app` and `dani@wealth.app`. Their
+passwords are read from the environment, never stored in this repo:
 
-| User | Email | Password |
-|---|---|---|
-| Juan | juan@wealth.app | ***REMOVED-PASSWORD*** |
-| Dani | dani@wealth.app | ***REMOVED-PASSWORD*** |
+```bash
+SEED_JUAN_PASSWORD="..." SEED_DANI_PASSWORD="..." npx tsx --env-file=.env prisma/seedAuth.ts
+```
 
 ## Module Guide
 

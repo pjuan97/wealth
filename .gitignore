@@ -41,3 +41,12 @@ yarn-error.log*
 next-env.d.ts
 
 /app/generated/prisma
+
+# Real financial data — never commit. prisma/data/ holds exported bank
+# transactions used by the one-off migration scripts; it was published to a
+# public repo once and had to be scrubbed from history. Keep it local.
+prisma/data/
+
+# Dumps and exports
+*.sql
+*.docx

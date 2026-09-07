@@ -8,9 +8,20 @@ const prisma = new PrismaClient({ adapter })
 async function main() {
   console.log('Seeding auth...')
 
-  // Create users
-  const juanPassword = await bcrypt.hash('***REMOVED-PASSWORD***', 10)
-  const daniPassword = await bcrypt.hash('***REMOVED-PASSWORD***', 10)
+  // Seed passwords come from the environment, never the repo. Same pattern as
+  // updatePasswords.ts — a committed plaintext password ends up in the git
+  // history forever, which is exactly what this repo had to be scrubbed for.
+  //   SEED_JUAN_PASSWORD="..." SEED_DANI_PASSWORD="..." npx tsx --env-file=.env prisma/seedAuth.ts
+  const juanPlain = process.env.SEED_JUAN_PASSWORD
+  const daniPlain = process.env.SEED_DANI_PASSWORD
+  if (!juanPlain || !daniPlain) {
+    throw new Error(
+      'Set SEED_JUAN_PASSWORD and SEED_DANI_PASSWORD before running this seed.'
+    )
+  }
+
+  const juanPassword = await bcrypt.hash(juanPlain, 10)
+  const daniPassword = await bcrypt.hash(daniPlain, 10)
 
   const juan = await prisma.user.upsert({
     where: { email: 'juan@wealth.app' },
@@ -84,9 +95,7 @@ async function main() {
   // inheriting another user's setup.
 
   console.log('\nAuth seed complete.')
-  console.log('Passwords:')
-  console.log('  juan@wealth.app → ***REMOVED-PASSWORD***')
-  console.log('  dani@wealth.app → ***REMOVED-PASSWORD***')
+  console.log('Passwords set from SEED_*_PASSWORD env vars.')
 }
 
 main()

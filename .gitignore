@@ -50,3 +50,6 @@ prisma/data/
 # Dumps and exports
 *.sql
 *.docx
+
+# Seeds real de Juan/Dani: 322 transacciones reales. Vive solo en disco.
+prisma/seed.ts
